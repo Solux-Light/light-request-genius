@@ -252,7 +252,31 @@ const SoluxIntake = () => {
                     <section>
                       <h2 className="text-xl font-semibold mb-4">{l("Zone d'étude assignée", "Assigned Study Area")}</h2>
                       {allZones.length > 0 ? (
-                        <Select value={form.assignedArea} onValueChange={(v) => onChange("assignedArea", v)}>
+                        <Select value={form.assignedArea} onValueChange={(v) => {
+                          // Save current zone's lighting data before switching
+                          if (form.assignedArea) {
+                            const currentData = {
+                              avgLux: form.avgLux,
+                              uniformity: form.uniformity,
+                              minLux: form.minLux,
+                              cct: form.cct,
+                            };
+                            setForm((f) => ({
+                              ...f,
+                              zoneLightingData: { ...f.zoneLightingData, [f.assignedArea]: currentData },
+                            }));
+                          }
+                          // Load new zone's lighting data (or reset to empty)
+                          const saved = form.zoneLightingData[v];
+                          setForm((f) => ({
+                            ...f,
+                            assignedArea: v,
+                            avgLux: saved?.avgLux || "",
+                            uniformity: saved?.uniformity || "",
+                            minLux: saved?.minLux || "",
+                            cct: saved?.cct || "4000K",
+                          }));
+                        }}>
                           <SelectTrigger><SelectValue placeholder={l("Sélectionner une zone", "Select a zone")} /></SelectTrigger>
                           <SelectContent>
                             {allZones.map((z) => (

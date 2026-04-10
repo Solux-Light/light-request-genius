@@ -267,7 +267,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             tilt: 0,
             heading: 0,
             mapTypeId: mapType,
-            draggable: activeTool === "select",
+            draggable: activeTool !== "lasso",
             draggableCursor: activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
           }}
         >
