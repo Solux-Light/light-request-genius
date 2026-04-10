@@ -27,7 +27,8 @@ const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en" }:
               })
       )
     );
-    await new Promise((r) => setTimeout(r, 300));
+    // Wait for Google Maps tiles to fully render
+    await new Promise((r) => setTimeout(r, 2000));
 
     const html2canvas = (await import("html2canvas")).default;
     const { jsPDF } = await import("jspdf");
