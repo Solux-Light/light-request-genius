@@ -3,8 +3,48 @@ import { MapArea, MapLamppost } from "@/types/solux";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 
-const LAMP_SINGLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z";
-const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z M-4,0 L-11,0 M-11,-4 Q-16,-4 -16,0 Q-16,4 -11,4 L-11,-4 Z";
+const rotatePoint = (x: number, y: number, angleDeg: number) => {
+  const angle = (angleDeg * Math.PI) / 180;
+  return {
+    x: x * Math.cos(angle) - y * Math.sin(angle),
+    y: x * Math.sin(angle) + y * Math.cos(angle),
+  };
+};
+
+const toPathPoint = ({ x, y }: { x: number; y: number }) => `${x.toFixed(2)},${y.toFixed(2)}`;
+
+const buildOpenPath = (points: Array<[number, number]>, angleDeg: number) => {
+  const rotated = points.map(([x, y]) => rotatePoint(x, y, angleDeg));
+  return `M${toPathPoint(rotated[0])} L${rotated.slice(1).map(toPathPoint).join(" L")}`;
+};
+
+const buildClosedPath = (points: Array<[number, number]>, angleDeg: number) => {
+  const rotated = points.map(([x, y]) => rotatePoint(x, y, angleDeg));
+  return `${buildOpenPath(points, angleDeg)} Z`;
+};
+
+const getLamppostPath = (type: "single" | "double", rotation = 0) => {
+  const pole = buildClosedPath([
+    [-3, -4],
+    [3, -4],
+    [4, -3],
+    [4, 3],
+    [3, 4],
+    [-3, 4],
+    [-4, 3],
+    [-4, -3],
+  ], rotation);
+  const rightArm = buildOpenPath([[4, 0], [10, 0]], rotation);
+  const rightHead = buildClosedPath([[10, -3.5], [16, -3.5], [16, 3.5], [10, 3.5]], rotation);
+
+  if (type === "double") {
+    const leftArm = buildOpenPath([[-4, 0], [-10, 0]], rotation);
+    const leftHead = buildClosedPath([[-10, -3.5], [-16, -3.5], [-16, 3.5], [-10, 3.5]], rotation);
+    return [pole, rightArm, rightHead, leftArm, leftHead].join(" ");
+  }
+
+  return [pole, rightArm, rightHead].join(" ");
+};
 
 interface Props {
   apiKey: string;
@@ -62,13 +102,12 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, cente
             key={lp.id}
             position={{ lat: lp.lat, lng: lp.lng }}
             icon={{
-              path: lp.type === "double" ? LAMP_DOUBLE : LAMP_SINGLE,
+              path: getLamppostPath(lp.type, lp.rotation || 0),
               fillColor: "#f59e0b",
               fillOpacity: 1,
               strokeColor: "#f59e0b",
               strokeWeight: 2.5,
               scale: 1.2,
-              rotation: lp.rotation || 0,
               anchor: new google.maps.Point(0, 0),
             }}
           />
