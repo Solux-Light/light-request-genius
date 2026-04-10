@@ -214,6 +214,16 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             </Button>
           </div>
         )}
+        {activeTool === "lasso" && lassoPath.length > 0 && (
+          <Button size="sm" variant="default" onClick={closeLasso} disabled={lassoPath.length < 3}>
+            ✓ {l("Fermer la zone", "Close zone")} ({lassoPath.length} pts)
+          </Button>
+        )}
+        {activeTool === "lasso" && lassoPath.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
+          </span>
+        )}
       </div>
 
       {/* Map */}
