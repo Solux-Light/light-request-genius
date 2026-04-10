@@ -33,7 +33,7 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, cente
         mapContainerStyle={{ width: "100%", height: "100%" }}
         center={center || location}
         zoom={zoom || 16}
-        mapTypeId="hybrid"
+        mapTypeId="satellite"
         options={{
           disableDefaultUI: true,
           gestureHandling: "none",
