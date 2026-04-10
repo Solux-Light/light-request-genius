@@ -96,25 +96,7 @@ const SoluxIntake = () => {
   // Unique road segment types
   const uniqueSegmentTypes = [...new Set(form.roadProfile.map((s) => s.type))];
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-2xl mx-auto">
-          <CardContent className="p-6 space-y-4">
-            <h2 className="text-xl font-semibold text-center">{l("Connexion", "Sign In")}</h2>
-            <p className="text-sm text-center text-muted-foreground">
-              {l("Connectez-vous pour accéder au formulaire", "Sign in to access the form")}
-            </p>
-            <div className="text-center">
-              <Link to="/">
-                <Button variant="outline">{l("Retour à l'accueil", "Back to Home")}</Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // No auth gate - form is accessible to everyone
 
   return (
     <div className="min-h-screen bg-background">
