@@ -93,7 +93,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     autocompleteRef.current = ac;
   }, [isLoaded]);
 
-
+  const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
 
