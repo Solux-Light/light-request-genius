@@ -29,8 +29,9 @@ const parseLatLng = (input: string) => {
   return { lat, lng };
 };
 
-const LAMP_SINGLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L14,0 M14,-3 L14,3";
-const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M-14,0 L-4,0 M4,0 L14,0 M-14,-3 L-14,3 M14,-3 L14,3";
+// Top-down lamppost: circle (pole) + arm line + luminaire rectangle
+const LAMP_SINGLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z";
+const LAMP_DOUBLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z M-3,0 L-12,0 M-10,-3 L-14,-3 L-14,3 L-10,3 Z";
 
 const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
@@ -129,6 +130,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     if (activeTool === "lasso" && e.latLng) {
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
+      // Don't create a new lamppost if one is already selected (user is interacting with popup)
+      if (selectedLamppostId) {
+        setSelectedLamppostId(null);
+        return;
+      }
       const newLamppost: MapLamppost = {
         id: crypto.randomUUID(),
         lat: e.latLng.lat(),
@@ -139,7 +145,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, lampposts: [...(value.lampposts || []), newLamppost] });
       setSelectedLamppostId(newLamppost.id);
     }
-  }, [activeTool, lamppostType, onChange, value]);
+  }, [activeTool, lamppostType, onChange, value, selectedLamppostId]);
 
   const handleMapDblClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "lasso") {
