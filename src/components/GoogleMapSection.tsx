@@ -45,11 +45,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState(COLOR_OPTIONS[0]);
 
-  // Lasso state
-  const drawingRef = useRef(false);
-  const lassoPoints = useRef<{ lat: number; lng: number }[]>([]);
+  // Lasso state (click-to-add mode)
   const [lassoPath, setLassoPath] = useState<{ lat: number; lng: number }[]>([]);
-  const lastThrottle = useRef(0);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
@@ -89,12 +86,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     }
   }, [onMapViewChange]);
 
-  const handleMapMouseDown = useCallback((e: google.maps.MapMouseEvent) => {
+  // Close the current lasso polygon
+  const closeLasso = useCallback(() => {
+    if (lassoPath.length >= 3) {
+      const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
+      const newArea: MapArea = {
+        id: crypto.randomUUID(),
+        type: "polygon",
+        paths: lassoPath,
+        color: selectedColor,
+        name: `Zone ${value.areas.length + 1}`,
+      };
+      onChange({ ...value, areas: [...value.areas, newArea] });
+      setSelectedColor(COLOR_OPTIONS[nextIdx]);
+      setColorIndex(nextIdx);
+    }
+    setLassoPath([]);
+  }, [lassoPath, colorIndex, selectedColor, onChange, value]);
+
+  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "lasso" && e.latLng) {
-      drawingRef.current = true;
-      lassoPoints.current = [{ lat: e.latLng.lat(), lng: e.latLng.lng() }];
-      setLassoPath([...lassoPoints.current]);
-      mapRef.current?.setOptions({ draggable: false });
+      setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
       const newLamppost: MapLamppost = {
         id: crypto.randomUUID(),
@@ -108,36 +120,12 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     }
   }, [activeTool, lamppostType, onChange, value]);
 
-  const handleMapMouseMove = useCallback((e: google.maps.MapMouseEvent) => {
-    if (!drawingRef.current || !e.latLng) return;
-    const now = Date.now();
-    if (now - lastThrottle.current < 58) return;
-    lastThrottle.current = now;
-    lassoPoints.current.push({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-    setLassoPath([...lassoPoints.current]);
-  }, []);
-
-  const handleMapMouseUp = useCallback(() => {
-    if (!drawingRef.current) return;
-    drawingRef.current = false;
-    mapRef.current?.setOptions({ draggable: true });
-    const points = lassoPoints.current;
-    if (points.length >= 3) {
-      const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
-      const newArea: MapArea = {
-        id: crypto.randomUUID(),
-        type: "polygon",
-        paths: points,
-        color: selectedColor,
-        name: `Zone ${value.areas.length + 1}`,
-      };
-      onChange({ ...value, areas: [...value.areas, newArea] });
-      setSelectedColor(COLOR_OPTIONS[nextIdx]);
-      setColorIndex(nextIdx);
+  const handleMapDblClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (activeTool === "lasso") {
+      e.stop();
+      closeLasso();
     }
-    lassoPoints.current = [];
-    setLassoPath([]);
-  }, [colorIndex, selectedColor, onChange, value]);
+  }, [activeTool, closeLasso]);
 
   const clearArea = (id: string) => {
     onChange({ ...value, areas: value.areas.filter((a) => a.id !== id) });
@@ -226,6 +214,16 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             </Button>
           </div>
         )}
+        {activeTool === "lasso" && lassoPath.length > 0 && (
+          <Button size="sm" variant="default" onClick={closeLasso} disabled={lassoPath.length < 3}>
+            ✓ {l("Fermer la zone", "Close zone")} ({lassoPath.length} pts)
+          </Button>
+        )}
+        {activeTool === "lasso" && lassoPath.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
+          </span>
+        )}
       </div>
 
       {/* Map */}
@@ -236,9 +234,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
           zoom={zoom}
           onLoad={onMapLoad}
           onIdle={onMapIdle}
-          onMouseDown={handleMapMouseDown}
-          onMouseMove={handleMapMouseMove}
-          onMouseUp={handleMapMouseUp}
+          onClick={handleMapClick}
+          onDblClick={handleMapDblClick}
           mapTypeId={mapType}
           options={{
             streetViewControl: false,
@@ -266,11 +263,30 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
           ))}
 
           {/* Lasso path */}
-          {lassoPath.length > 1 && (
-            <PolylineF
-              path={lassoPath}
-              options={{ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8 }}
-            />
+          {lassoPath.length > 0 && (
+            <>
+              <PolylineF
+                path={[...lassoPath, lassoPath[0]]}
+                options={{ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8 }}
+              />
+              {lassoPath.map((pt, i) => (
+                <MarkerF
+                  key={`lasso-pt-${i}`}
+                  position={pt}
+                  icon={{
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: selectedColor,
+                    fillOpacity: 1,
+                    strokeColor: "#fff",
+                    strokeWeight: 1.5,
+                    scale: i === 0 ? 7 : 5,
+                  }}
+                  onClick={() => {
+                    if (i === 0 && lassoPath.length >= 3) closeLasso();
+                  }}
+                />
+              ))}
+            </>
           )}
 
           {/* Lampposts */}
@@ -299,16 +315,16 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             return (
               <InfoWindowF position={{ lat: lp.lat, lng: lp.lng }} onCloseClick={() => setSelectedLamppostId(null)}>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, -15)}>
-                    <RotateCcw className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, 15)}>
-                    <RotateCw className="h-3 w-3" />
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => deleteLamppost(lp.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
+                   <Button type="button" size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, -15)}>
+                     <RotateCcw className="h-3 w-3" />
+                   </Button>
+                   <Button type="button" size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, 15)}>
+                     <RotateCw className="h-3 w-3" />
+                   </Button>
+                   <Button type="button" size="sm" variant="destructive" onClick={() => deleteLamppost(lp.id)}>
+                     <Trash2 className="h-3 w-3" />
+                   </Button>
+                 </div>
               </InfoWindowF>
             );
           })()}
