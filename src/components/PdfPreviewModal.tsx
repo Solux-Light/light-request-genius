@@ -47,24 +47,12 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
           salesName={salesName}
           nowStr={nowStr}
           lang={lang}
-          mapPreviewMode="live"
           apiKey={apiKey}
         />
 
-        {/* Hidden export copy */}
-        <div style={{ position: "absolute", left: -9999 }}>
-          <PdfSubmissionDocument
-            ref={exportRef}
-            form={form}
-            salesName={salesName}
-            nowStr={nowStr}
-            lang={lang}
-            mapPreviewMode="placeholder"
-          />
-        </div>
-
         <div className="flex justify-end pt-4">
-          <PdfExportButton contentRef={exportRef} filename={`${safeName}.pdf`} lang={lang} />
+          <PdfExportButton contentRef={previewRef} filename={`${safeName}.pdf`} lang={lang} />
+        </div>
         </div>
       </DialogContent>
     </Dialog>
