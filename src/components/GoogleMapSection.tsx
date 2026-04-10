@@ -361,27 +361,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
         {/* Zoom controls */}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
-          <Button size="sm" variant="secondary" onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1)}>
+          <Button type="button" size="sm" variant="secondary" onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) + 1)}>
             <Plus className="h-4 w-4" />
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1)}>
+          <Button type="button" size="sm" variant="secondary" onClick={() => mapRef.current?.setZoom((mapRef.current?.getZoom() || 10) - 1)}>
             <Minus className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Map type toggle */}
         <div className="absolute top-2 right-14 flex gap-1">
-          <Button size="sm" variant={mapType === "satellite" ? "default" : "secondary"} onClick={() => setMapType("satellite")}>
+          <Button type="button" size="sm" variant={mapType === "satellite" ? "default" : "secondary"} onClick={() => setMapType("satellite")}>
             Satellite
           </Button>
-          <Button size="sm" variant={mapType === "hybrid" ? "default" : "secondary"} onClick={() => setMapType("hybrid")}>
+          <Button type="button" size="sm" variant={mapType === "hybrid" ? "default" : "secondary"} onClick={() => setMapType("hybrid")}>
             Hybrid
           </Button>
         </div>
 
         {/* Clear all */}
         {value.areas.length > 0 && (
-          <Button size="sm" variant="destructive" className="absolute bottom-2 left-2" onClick={clearAllAreas}>
+          <Button type="button" size="sm" variant="destructive" className="absolute bottom-2 left-2" onClick={clearAllAreas}>
             {l("Effacer toutes les zones", "Clear all zones")}
           </Button>
         )}
