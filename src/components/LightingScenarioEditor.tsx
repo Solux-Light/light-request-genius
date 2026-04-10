@@ -187,6 +187,7 @@ const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
           <div className="space-y-1">
             {segments.map((seg) => (
               <button
+                type="button"
                 key={seg.id}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm flex justify-between"
                 style={seg.id === selectedId ? styles.activeBtn : styles.inactiveBtn}
@@ -198,10 +199,10 @@ const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
             ))}
           </div>
           <div className="flex gap-2 mt-3">
-            <Button size="sm" variant="outline" onClick={addSegment}>
+            <Button type="button" size="sm" variant="outline" onClick={addSegment}>
               {l("+ Ajouter", "+ Add after")}
             </Button>
-            <Button size="sm" variant="outline" onClick={removeSegment} disabled={segments.length <= 1}>
+            <Button type="button" size="sm" variant="outline" onClick={removeSegment} disabled={segments.length <= 1}>
               {l("Supprimer", "Delete")}
             </Button>
           </div>
@@ -213,6 +214,7 @@ const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
           {/* Mode toggle */}
           <div className="flex gap-1 mb-3">
             <button
+              type="button"
               className="px-3 py-1 rounded text-sm"
               style={selected.mode === "sensor" ? styles.activeBtn : styles.inactiveBtn}
               onClick={() => updateSelected("mode", "sensor")}
@@ -220,6 +222,7 @@ const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
               Sensor
             </button>
             <button
+              type="button"
               className="px-3 py-1 rounded text-sm"
               style={selected.mode === "fixed" ? styles.activeBtn : styles.inactiveBtn}
               onClick={() => updateSelected("mode", "fixed")}
