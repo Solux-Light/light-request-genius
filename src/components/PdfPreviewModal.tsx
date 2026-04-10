@@ -53,7 +53,6 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
         <div className="flex justify-end pt-4">
           <PdfExportButton contentRef={previewRef} filename={`${safeName}.pdf`} lang={lang} />
         </div>
-        </div>
       </DialogContent>
     </Dialog>
   );
