@@ -68,6 +68,32 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           </table>
         </section>
 
+        {/* Map preview (zone + map mode) */}
+        {form.locationMode === "map" && form.location && (
+          <section style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
+              {l("Carte du projet", "Project Map")}
+            </h2>
+            {mapPreviewMode === "live" && apiKey ? (
+              <ProjectLiveMapPreview
+                apiKey={apiKey}
+                location={form.location}
+                areas={form.areas}
+                lampposts={form.lampposts}
+                zoom={form.mapZoom}
+                center={form.mapCenter}
+                lang={lang}
+              />
+            ) : (
+              <ProjectMapPreview
+                location={form.location}
+                areas={form.areas}
+                lampposts={form.lampposts}
+              />
+            )}
+          </section>
+        )}
+
         {/* PDF Plan preview */}
         {form.locationMode === "pdf" && form.pdfPlan.previewImage && (
           <section style={{ marginBottom: 20 }}>
