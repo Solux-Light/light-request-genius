@@ -52,8 +52,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
-  const center = value.location || { lat: 46.2276, lng: 2.2137 };
-  const zoom = value.location ? 16 : 5;
+  const initialCenter = useMemo(() => value.location || { lat: 46.2276, lng: 2.2137 }, []);
+  const initialZoom = useMemo(() => value.location ? 16 : 5, []);
 
   const handleAddressKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -253,8 +253,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       <div className="relative rounded-lg overflow-hidden border border-border">
         <GoogleMap
           mapContainerStyle={{ width: "100%", height: "500px" }}
-          center={center}
-          zoom={zoom}
+          center={initialCenter}
+          zoom={initialZoom}
           onLoad={onMapLoad}
           onIdle={onMapIdle}
           onClick={handleMapClick}
