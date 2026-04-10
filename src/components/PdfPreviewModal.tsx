@@ -17,7 +17,7 @@ interface Props {
 const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportRef = useRef<HTMLDivElement>(null);
+  
 
   const safeName = form.projectName
     .normalize("NFD")
