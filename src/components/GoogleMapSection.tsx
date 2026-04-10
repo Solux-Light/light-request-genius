@@ -129,6 +129,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     if (activeTool === "lasso" && e.latLng) {
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
+      // Don't create a new lamppost if one is already selected (user is interacting with popup)
+      if (selectedLamppostId) {
+        setSelectedLamppostId(null);
+        return;
+      }
       const newLamppost: MapLamppost = {
         id: crypto.randomUUID(),
         lat: e.latLng.lat(),
@@ -139,7 +144,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, lampposts: [...(value.lampposts || []), newLamppost] });
       setSelectedLamppostId(newLamppost.id);
     }
-  }, [activeTool, lamppostType, onChange, value]);
+  }, [activeTool, lamppostType, onChange, value, selectedLamppostId]);
 
   const handleMapDblClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "lasso") {
