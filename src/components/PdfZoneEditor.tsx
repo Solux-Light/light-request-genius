@@ -231,6 +231,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
         <div className="flex gap-1">
           {COLOR_OPTIONS.map((c) => (
             <button
+              type="button"
               key={c}
               className={`w-6 h-6 rounded-full border-2 ${selectedColor === c ? "border-foreground" : "border-transparent"}`}
               style={{ backgroundColor: c }}
@@ -239,47 +240,47 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
           ))}
         </div>
         <div className="w-px h-6 bg-border" />
-        <Button size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
+        <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
           <PenTool className="h-4 w-4 mr-1" /> Lasso
         </Button>
-        <Button size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
+        <Button type="button" size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
           <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
         </Button>
-        <Button size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
+        <Button type="button" size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
           💡 {l("Lampadaire", "Lamppost")}
         </Button>
         {activeTool === "lamppost" && (
           <div className="flex gap-1">
-            <Button size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
+            <Button type="button" size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
               {l("Simple", "Single")}
             </Button>
-            <Button size="sm" variant={lamppostType === "double" ? "default" : "outline"} onClick={() => setLamppostType("double")}>
+            <Button type="button" size="sm" variant={lamppostType === "double" ? "default" : "outline"} onClick={() => setLamppostType("double")}>
               Double
             </Button>
           </div>
         )}
         <div className="w-px h-6 bg-border" />
-        <Button size="sm" variant="outline" onClick={() => setZoom((z) => Math.min(z + 0.25, 4))}>
+        <Button type="button" size="sm" variant="outline" onClick={() => setZoom((z) => Math.min(z + 0.25, 4))}>
           <Plus className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setZoom((z) => Math.max(z - 0.25, 0.5))}>
+        <Button type="button" size="sm" variant="outline" onClick={() => setZoom((z) => Math.max(z - 0.25, 0.5))}>
           <Minus className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setRotation((r) => (r + 90) % 360)}>
+        <Button type="button" size="sm" variant="outline" onClick={() => setRotation((r) => (r + 90) % 360)}>
           <Rotate className="h-4 w-4" />
         </Button>
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="outline" onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage <= 1}>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage <= 1}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <span className="text-sm">{currentPage}/{totalPages}</span>
-            <Button size="sm" variant="outline" onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages}>
+            <Button type="button" size="sm" variant="outline" onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage >= totalPages}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         )}
-        <Button size="sm" variant="outline" onClick={() => onChange({ ...value, pdfUrl: "", zones: [], lampposts: [] })}>
+        <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, pdfUrl: "", zones: [], lampposts: [] })}>
           {l("Changer le PDF", "Change PDF")}
         </Button>
       </div>

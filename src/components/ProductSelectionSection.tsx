@@ -124,7 +124,7 @@ const ProductSelectionSection = ({
                 </Select>
               </div>
               <div className="flex items-end">
-                <Button size="sm" variant="destructive" onClick={() => removeAssignment(row.id)}>
+                <Button type="button" size="sm" variant="destructive" onClick={() => removeAssignment(row.id)}>
                   <Trash2 className="h-3 w-3 mr-1" /> {l("Retirer", "Remove")}
                 </Button>
               </div>
@@ -181,7 +181,7 @@ const ProductSelectionSection = ({
             </div>
           </div>
         ))}
-        <Button variant="outline" onClick={addAssignment}>
+        <Button type="button" variant="outline" onClick={addAssignment}>
           <Plus className="h-4 w-4 mr-1" /> {l("Ajouter Zone/Produit", "Add Zone/Product Assignment")}
         </Button>
       </div>
