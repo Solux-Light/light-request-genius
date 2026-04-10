@@ -27,8 +27,8 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
     }]);
   };
 
-  const updateSegment = (id: string, field: string, val: any) => {
-    onChange(value.map((s) => (s.id === id ? { ...s, [field]: val } : s)));
+  const updateSegment = (id: string, updates: Record<string, any>) => {
+    onChange(value.map((s) => (s.id === id ? { ...s, ...updates } : s)));
   };
 
   const removeSegment = (id: string) => {
@@ -148,8 +148,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
             <Label className="text-xs">{l("Type", "Type")}</Label>
             <Select value={seg.type} onValueChange={(v) => {
               const def = SEGMENT_TYPES.find((t) => t.value === v);
-              updateSegment(seg.id, "type", v);
-              if (def) updateSegment(seg.id, "width", def.defaultWidth);
+              updateSegment(seg.id, { type: v, ...(def ? { width: def.defaultWidth } : {}) });
             }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -169,7 +168,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
               min={0.5}
               max={20}
               value={seg.width}
-              onChange={(e) => updateSegment(seg.id, "width", parseFloat(e.target.value) || 0.5)}
+              onChange={(e) => updateSegment(seg.id, { width: parseFloat(e.target.value) || 0.5 })}
             />
           </div>
 
@@ -177,7 +176,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
           {seg.type === "lane" && (
             <div className="w-36 space-y-1">
               <Label className="text-xs">{l("Direction", "Direction")}</Label>
-              <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, "direction", v)}>
+              <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, { direction: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="forward">{l("Avant", "Forward")}</SelectItem>
