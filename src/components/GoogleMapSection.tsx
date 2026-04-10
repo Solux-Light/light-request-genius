@@ -194,6 +194,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     <div className="space-y-3">
       {/* Address Input */}
       <Input
+        ref={addressInputRef}
         value={value.address}
         onChange={(e) => onChange({ ...value, address: e.target.value })}
         onKeyDown={handleAddressKeyDown}
