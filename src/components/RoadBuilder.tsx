@@ -168,7 +168,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
               min={0.5}
               max={20}
               value={seg.width}
-              onChange={(e) => updateSegment(seg.id, "width", parseFloat(e.target.value) || 0.5)}
+              onChange={(e) => updateSegment(seg.id, { width: parseFloat(e.target.value) || 0.5 })}
             />
           </div>
 
@@ -176,7 +176,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
           {seg.type === "lane" && (
             <div className="w-36 space-y-1">
               <Label className="text-xs">{l("Direction", "Direction")}</Label>
-              <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, "direction", v)}>
+              <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, { direction: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="forward">{l("Avant", "Forward")}</SelectItem>
