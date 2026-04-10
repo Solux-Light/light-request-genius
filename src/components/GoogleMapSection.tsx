@@ -186,6 +186,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
         <div className="flex gap-1">
           {COLOR_OPTIONS.map((c) => (
             <button
+              type="button"
               key={c}
               className={`w-6 h-6 rounded-full border-2 ${selectedColor === c ? "border-foreground" : "border-transparent"}`}
               style={{ backgroundColor: c }}
@@ -195,27 +196,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
         </div>
         <div className="w-px h-6 bg-border" />
         {/* Tools */}
-        <Button size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
+        <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
           <PenTool className="h-4 w-4 mr-1" /> {l("Lasso", "Lasso")}
         </Button>
-        <Button size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
+        <Button type="button" size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
           <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
         </Button>
-        <Button size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
+        <Button type="button" size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
           💡 {l("Lampadaire", "Lamppost")}
         </Button>
         {activeTool === "lamppost" && (
           <div className="flex gap-1">
-            <Button size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
+            <Button type="button" size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
               {l("Simple", "Single")}
             </Button>
-            <Button size="sm" variant={lamppostType === "double" ? "default" : "outline"} onClick={() => setLamppostType("double")}>
+            <Button type="button" size="sm" variant={lamppostType === "double" ? "default" : "outline"} onClick={() => setLamppostType("double")}>
               {l("Double", "Double")}
             </Button>
           </div>
         )}
         {activeTool === "lasso" && lassoPath.length > 0 && (
-          <Button size="sm" variant="default" onClick={closeLasso} disabled={lassoPath.length < 3}>
+          <Button type="button" size="sm" variant="default" onClick={closeLasso} disabled={lassoPath.length < 3}>
             ✓ {l("Fermer la zone", "Close zone")} ({lassoPath.length} pts)
           </Button>
         )}
