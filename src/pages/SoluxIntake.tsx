@@ -180,7 +180,7 @@ const SoluxIntake = () => {
                       }}
                     >
                       <span className="text-2xl">💡</span>
-                      <h3 className="font-semibold mt-2">{l("Éclairage de zone", "Zone Lighting")}</h3>
+                      <h3 className="font-semibold mt-2">{l("Éclairage de zone", "Area Lighting")}</h3>
                       <p className="text-sm text-muted-foreground">{l("Parking, bâtiment, espace public, etc.", "Parking, building, public space, etc.")}</p>
                     </button>
                     <button
@@ -199,7 +199,7 @@ const SoluxIntake = () => {
                       }}
                     >
                       <span className="text-2xl">🛣️</span>
-                      <h3 className="font-semibold mt-2">{l("Éclairage routier", "Road Lighting")}</h3>
+                      <h3 className="font-semibold mt-2">{l("Éclairage routier", "Road & Street lighting Lighting")}</h3>
                       <p className="text-sm text-muted-foreground">{l("Route, rue, autoroute, piste cyclable, etc.", "Road, street, highway, bike path, etc.")}</p>
                     </button>
                   </div>
