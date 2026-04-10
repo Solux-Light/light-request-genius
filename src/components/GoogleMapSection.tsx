@@ -334,7 +334,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                 path: lp.type === "double" ? LAMP_DOUBLE : LAMP_SINGLE,
                 fillColor: "#f59e0b",
                 fillOpacity: 1,
-                strokeColor: "#f59e0b",
+                strokeColor: selectedLamppostId === lp.id ? "#475569" : "#f59e0b",
                 strokeWeight: selectedLamppostId === lp.id ? 3 : 2.5,
                 scale: selectedLamppostId === lp.id ? 1.45 : 1.2,
                 rotation: lp.rotation || 0,
@@ -344,24 +344,37 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             />
           ))}
 
-          {/* Selected lamppost info window */}
+          {/* Selected lamppost — dashed circle + popup */}
           {selectedLamppostId && (() => {
             const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
             if (!lp) return null;
             return (
-              <InfoWindowF position={{ lat: lp.lat, lng: lp.lng }} onCloseClick={() => setSelectedLamppostId(null)}>
-                <div className="flex gap-1">
-                   <Button type="button" size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, -15)}>
-                     <RotateCcw className="h-3 w-3" />
-                   </Button>
-                   <Button type="button" size="sm" variant="outline" onClick={() => rotateLamppost(lp.id, 15)}>
-                     <RotateCw className="h-3 w-3" />
-                   </Button>
-                   <Button type="button" size="sm" variant="destructive" onClick={() => deleteLamppost(lp.id)}>
-                     <Trash2 className="h-3 w-3" />
-                   </Button>
-                 </div>
-              </InfoWindowF>
+              <OverlayViewF
+                position={{ lat: lp.lat, lng: lp.lng }}
+                mapPaneName={OverlayView.FLOAT_PANE}
+              >
+                <div className="relative" style={{ transform: "translate(-50%, -50%)" }}>
+                  {/* Dashed selection circle */}
+                  <svg width="56" height="56" className="absolute -top-7 -left-7 pointer-events-none">
+                    <circle cx="28" cy="28" r="24" fill="none" stroke="#475569" strokeWidth="2" strokeDasharray="6 4" />
+                  </svg>
+                  {/* Popup */}
+                  <div
+                    className="absolute flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
+                    style={{ left: 36, top: -24, whiteSpace: "nowrap" }}
+                  >
+                    <Button type="button" size="sm" variant="outline" className="h-9 w-9 p-0 rounded-lg" onClick={() => rotateLamppost(lp.id, -15)}>
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-9 w-9 p-0 rounded-lg" onClick={() => rotateLamppost(lp.id, 15)}>
+                      <RotateCw className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" size="sm" variant="destructive" className="h-9 w-9 p-0 rounded-lg" onClick={() => deleteLamppost(lp.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </OverlayViewF>
             );
           })()}
 
