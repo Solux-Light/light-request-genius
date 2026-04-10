@@ -319,6 +319,17 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             <MarkerF
               key={lp.id}
               position={{ lat: lp.lat, lng: lp.lng }}
+              draggable
+              onDragEnd={(e) => {
+                if (e.latLng) {
+                  onChange({
+                    ...value,
+                    lampposts: (value.lampposts || []).map((l) =>
+                      l.id === lp.id ? { ...l, lat: e.latLng!.lat(), lng: e.latLng!.lng() } : l
+                    ),
+                  });
+                }
+              }}
               icon={{
                 path: lp.type === "double" ? LAMP_DOUBLE : LAMP_SINGLE,
                 fillColor: "#f59e0b",
