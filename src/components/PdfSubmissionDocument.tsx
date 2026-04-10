@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { SoluxForm, SEGMENT_TYPES, SEGMENT_COLORS, LightingSegment } from "@/types/solux";
+import ProjectLiveMapPreview, { ProjectMapPreview } from "@/components/ProjectLiveMapPreview";
 
 const PRODUCT_LABELS: Record<string, string> = {
   SSLXPRO: "SOLUX PRO",
@@ -25,7 +26,7 @@ const segColor = (seg: LightingSegment) => {
 };
 
 const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
-  ({ form, salesName, nowStr, lang, mapPreviewMode = "placeholder" }, ref) => {
+  ({ form, salesName, nowStr, lang, mapPreviewMode = "placeholder", apiKey }, ref) => {
     const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
     const getSegLabel = (type: string) => {
       const t = SEGMENT_TYPES.find((s) => s.value === type);
@@ -66,6 +67,32 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             </tbody>
           </table>
         </section>
+
+        {/* Map preview (zone + map mode) */}
+        {form.locationMode === "map" && form.location && (
+          <section style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
+              {l("Carte du projet", "Project Map")}
+            </h2>
+            {mapPreviewMode === "live" && apiKey ? (
+              <ProjectLiveMapPreview
+                apiKey={apiKey}
+                location={form.location}
+                areas={form.areas}
+                lampposts={form.lampposts}
+                zoom={form.mapZoom}
+                center={form.mapCenter}
+                lang={lang}
+              />
+            ) : (
+              <ProjectMapPreview
+                location={form.location}
+                areas={form.areas}
+                lampposts={form.lampposts}
+              />
+            )}
+          </section>
+        )}
 
         {/* PDF Plan preview */}
         {form.locationMode === "pdf" && form.pdfPlan.previewImage && (
