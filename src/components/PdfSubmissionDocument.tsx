@@ -1,6 +1,32 @@
 import { forwardRef } from "react";
 import { SoluxForm, SEGMENT_TYPES, SEGMENT_COLORS, LightingSegment } from "@/types/solux";
-import ProjectLiveMapPreview, { ProjectMapPreview } from "@/components/ProjectLiveMapPreview";
+
+const buildStaticMapUrl = (
+  apiKey: string,
+  location: { lat: number; lng: number },
+  areas: { paths: { lat: number; lng: number }[]; color: string }[],
+  lampposts: { lat: number; lng: number }[],
+  zoom?: number,
+  center?: { lat: number; lng: number }
+) => {
+  const c = center || location;
+  const z = zoom || 16;
+  const base = `https://maps.googleapis.com/maps/api/staticmap?center=${c.lat},${c.lng}&zoom=${z}&size=760x380&scale=2&maptype=hybrid&key=${apiKey}`;
+
+  // Add polygon paths
+  const polyParts = areas.map((area) => {
+    const hex = area.color.replace("#", "");
+    const pathStr = area.paths.map((p) => `${p.lat},${p.lng}`).join("|");
+    return `&path=color:0x${hex}88|fillcolor:0x${hex}44|weight:2|${pathStr}|${area.paths[0].lat},${area.paths[0].lng}`;
+  });
+
+  // Add lamppost markers
+  const markerParts = lampposts.length > 0
+    ? `&markers=color:yellow|size:small|${lampposts.map((lp) => `${lp.lat},${lp.lng}`).join("|")}`
+    : "";
+
+  return base + polyParts.join("") + markerParts;
+};
 
 const PRODUCT_LABELS: Record<string, string> = {
   SSLXPRO: "SOLUX PRO",
