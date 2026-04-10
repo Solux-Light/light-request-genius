@@ -304,7 +304,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
               className="absolute bg-card border rounded-lg shadow-lg p-2 flex gap-1"
               style={{ left: lp.x * rect.width + 20, top: lp.y * rect.height - 20 }}
             >
-              <Button size="sm" variant="outline" onClick={() => {
+              <Button type="button" size="sm" variant="outline" onClick={() => {
                 onChange({
                   ...value,
                   lampposts: (value.lampposts || []).map((l) =>
@@ -314,7 +314,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
               }}>
                 <RotateCcw className="h-3 w-3" />
               </Button>
-              <Button size="sm" variant="outline" onClick={() => {
+              <Button type="button" size="sm" variant="outline" onClick={() => {
                 onChange({
                   ...value,
                   lampposts: (value.lampposts || []).map((l) =>
@@ -324,7 +324,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
               }}>
                 <RotateCw className="h-3 w-3" />
               </Button>
-              <Button size="sm" variant="destructive" onClick={() => {
+              <Button type="button" size="sm" variant="destructive" onClick={() => {
                 onChange({ ...value, lampposts: (value.lampposts || []).filter((l) => l.id !== lp.id) });
                 setSelectedLamppostId(null);
               }}>
@@ -340,7 +340,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
         {value.zones.length > 0 && (
           <div className="flex items-center gap-2">
             <span>{value.zones.length} zone(s)</span>
-            <Button size="sm" variant="outline" onClick={() => onChange({ ...value, zones: [] })}>
+            <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, zones: [] })}>
               {l("Effacer les zones", "Clear all zones")}
             </Button>
           </div>
