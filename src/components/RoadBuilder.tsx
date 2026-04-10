@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Copy, GripVertical, Plus } from "lucide-react";
 import { RoadProfile, RoadSegment, SEGMENT_TYPES, SEGMENT_COLORS } from "@/types/solux";
@@ -14,19 +15,16 @@ interface Props {
 const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const addSegment = () => {
-    const seg: RoadSegment = {
+    onChange([...value, {
       id: crypto.randomUUID(),
       type: "lane",
       width: 3.5,
       direction: "forward",
-    };
-    onChange([...value, seg]);
-    setSelectedId(seg.id);
+    }]);
   };
 
   const updateSegment = (id: string, field: string, val: any) => {
@@ -35,7 +33,6 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const removeSegment = (id: string) => {
     onChange(value.filter((s) => s.id !== id));
-    if (selectedId === id) setSelectedId(null);
   };
 
   const duplicateSegment = (seg: RoadSegment) => {
@@ -44,7 +41,6 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
     const next = [...value];
     next.splice(idx + 1, 0, copy);
     onChange(next);
-    setSelectedId(copy.id);
   };
 
   const mirrorProfile = () => {
@@ -79,8 +75,8 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header with actions */}
+    <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">{l("Profil routier", "Road Profile")}</h3>
         <div className="flex gap-2">
@@ -95,53 +91,36 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
         </div>
       </div>
 
-      {/* Visual cross-section — main UI */}
+      {/* Visual cross-section */}
       {value.length > 0 && (
         <div className="border rounded-lg p-6 bg-muted/30">
-          <p className="text-xs text-muted-foreground mb-4">{l("Aperçu du profil routier", "Road profile preview")}</p>
-          <div className="flex items-end justify-center" style={{ minHeight: 100 }}>
-            {value.map((seg) => {
-              const isSelected = selectedId === seg.id;
-              return (
+          <div className="flex items-end justify-center">
+            {value.map((seg) => (
+              <div key={seg.id} className="flex flex-col items-center">
+                {/* Direction arrow */}
+                {seg.type === "lane" && seg.direction && (
+                  <span className="text-sm text-foreground mb-1">
+                    {seg.direction === "forward" ? "↑" : seg.direction === "backward" ? "↓" : "↕"}
+                  </span>
+                )}
+                {seg.type !== "lane" && <span className="text-sm mb-1">&nbsp;</span>}
+                {/* Segment block */}
                 <div
-                  key={seg.id}
-                  className={`relative flex flex-col items-center justify-center cursor-pointer transition-all ${isSelected ? "ring-2 ring-primary ring-offset-2 rounded" : ""}`}
+                  className="flex items-center justify-center"
                   style={{
                     minWidth: 70,
-                    width: `${(seg.width / totalWidth) * 100}%`,
-                    maxWidth: seg.width * 50,
-                    height: 60,
+                    width: seg.width * 45,
+                    height: 44,
                     backgroundColor: SEGMENT_COLORS[seg.type] || "#888",
                     color: "#fff",
                     fontSize: 12,
                     fontWeight: 600,
                   }}
-                  onClick={() => setSelectedId(isSelected ? null : seg.id)}
                 >
-                  {/* Direction arrow above */}
-                  {seg.type === "lane" && seg.direction && (
-                    <span className="absolute -top-5 text-foreground text-sm">
-                      {seg.direction === "forward" ? "↑" : seg.direction === "backward" ? "↓" : "↕"}
-                    </span>
-                  )}
-                  <span>{getLabel(seg.type)}</span>
+                  {getLabel(seg.type)}
                 </div>
-              );
-            })}
-          </div>
-          {/* Width labels below */}
-          <div className="flex items-start justify-center mt-1">
-            {value.map((seg) => (
-              <div
-                key={seg.id}
-                className="text-center text-xs text-muted-foreground"
-                style={{
-                  minWidth: 70,
-                  width: `${(seg.width / totalWidth) * 100}%`,
-                  maxWidth: seg.width * 50,
-                }}
-              >
-                {seg.width}m
+                {/* Width label */}
+                <span className="text-xs text-muted-foreground mt-1">{seg.width}m</span>
               </div>
             ))}
           </div>
@@ -151,91 +130,73 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
         </div>
       )}
 
-      {/* Selected segment editor */}
-      {selectedId && (() => {
-        const seg = value.find((s) => s.id === selectedId);
-        if (!seg) return null;
-        return (
-          <div className="border rounded-lg p-4 bg-card space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{l("Modifier le segment", "Edit segment")}</span>
-              <div className="flex gap-1">
-                <Button type="button" size="sm" variant="ghost" onClick={() => duplicateSegment(seg)}>
-                  <Copy className="h-3 w-3" />
-                </Button>
-                <Button type="button" size="sm" variant="destructive" onClick={() => removeSegment(seg.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">{l("Type", "Type")}</label>
-                <Select value={seg.type} onValueChange={(v) => {
-                  const def = SEGMENT_TYPES.find((t) => t.value === v);
-                  updateSegment(seg.id, "type", v);
-                  if (def) updateSegment(seg.id, "width", def.defaultWidth);
-                }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {SEGMENT_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{lang === "fr" ? t.labelFr : t.labelEn}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">{l("Largeur (m)", "Width (m)")}</label>
-                <Input
-                  type="number"
-                  step={0.5}
-                  min={0.5}
-                  max={20}
-                  value={seg.width}
-                  onChange={(e) => updateSegment(seg.id, "width", parseFloat(e.target.value) || 0.5)}
-                />
-              </div>
-              {seg.type === "lane" && (
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">{l("Direction", "Direction")}</label>
-                  <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, "direction", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="forward">{l("→ Avant", "→ Forward")}</SelectItem>
-                      <SelectItem value="backward">{l("← Arrière", "← Backward")}</SelectItem>
-                      <SelectItem value="both">{l("↔ Les deux", "↔ Both")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
+      {/* Segment list — each as a card row */}
+      {value.map((seg, i) => (
+        <div
+          key={seg.id}
+          className={`flex items-end gap-4 p-4 rounded-lg border bg-card ${dropIdx === i ? "ring-2 ring-primary" : ""} ${dragIdx === i ? "opacity-50" : ""}`}
+          draggable
+          onDragStart={() => handleDragStart(i)}
+          onDragOver={(e) => handleDragOver(e, i)}
+          onDrop={() => handleDrop(i)}
+          onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+        >
+          <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab shrink-0 mb-2" />
 
-      {/* Segment list — compact reorder */}
-      {value.length > 1 && (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">{l("Glisser pour réorganiser", "Drag to reorder")}</p>
-          {value.map((seg, i) => (
-            <div
-              key={seg.id}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded border text-sm cursor-pointer ${selectedId === seg.id ? "border-primary bg-primary/5" : "border-transparent hover:bg-muted/50"} ${dropIdx === i ? "ring-2 ring-primary" : ""} ${dragIdx === i ? "opacity-50" : ""}`}
-              draggable
-              onDragStart={() => handleDragStart(i)}
-              onDragOver={(e) => handleDragOver(e, i)}
-              onDrop={() => handleDrop(i)}
-              onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-              onClick={() => setSelectedId(selectedId === seg.id ? null : seg.id)}
-            >
-              <GripVertical className="h-3 w-3 text-muted-foreground cursor-grab" />
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[seg.type] || "#888" }} />
-              <span className="flex-1">{getLabel(seg.type)}</span>
-              <span className="text-muted-foreground">{seg.width}m</span>
+          {/* Type */}
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">{l("Type", "Type")}</Label>
+            <Select value={seg.type} onValueChange={(v) => {
+              const def = SEGMENT_TYPES.find((t) => t.value === v);
+              updateSegment(seg.id, "type", v);
+              if (def) updateSegment(seg.id, "width", def.defaultWidth);
+            }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SEGMENT_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{lang === "fr" ? t.labelFr : t.labelEn}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Width */}
+          <div className="w-28 space-y-1">
+            <Label className="text-xs">{l("Largeur (m)", "Width (m)")}</Label>
+            <Input
+              type="number"
+              step={0.5}
+              min={0.5}
+              max={20}
+              value={seg.width}
+              onChange={(e) => updateSegment(seg.id, "width", parseFloat(e.target.value) || 0.5)}
+            />
+          </div>
+
+          {/* Direction (lanes only) */}
+          {seg.type === "lane" && (
+            <div className="w-36 space-y-1">
+              <Label className="text-xs">{l("Direction", "Direction")}</Label>
+              <Select value={seg.direction || "forward"} onValueChange={(v) => updateSegment(seg.id, "direction", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="forward">{l("Avant", "Forward")}</SelectItem>
+                  <SelectItem value="backward">{l("Arrière", "Backward")}</SelectItem>
+                  <SelectItem value="both">{l("Les deux", "Both")}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          ))}
+          )}
+
+          {/* Actions */}
+          <Button type="button" size="icon" variant="ghost" onClick={() => duplicateSegment(seg)} className="shrink-0 mb-0.5">
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button type="button" size="icon" variant="ghost" onClick={() => removeSegment(seg.id)} className="shrink-0 mb-0.5 text-destructive hover:text-destructive">
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
-      )}
+      ))}
 
       {value.length === 0 && (
         <div className="border border-dashed rounded-lg p-8 text-center text-muted-foreground">
