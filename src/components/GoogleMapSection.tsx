@@ -184,6 +184,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       };
       onChange({ ...value, lampposts: [...(value.lampposts || []), newLamppost] });
       setSelectedLamppostId(newLamppost.id);
+      setActiveTool("select");
     }
   }, [activeTool, lamppostType, onChange, value]);
 
@@ -385,7 +386,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                 scale: selectedLamppostId === lp.id ? 1.45 : 1.2,
                 anchor: new google.maps.Point(0, 0),
               }}
-              onClick={() => setSelectedLamppostId(selectedLamppostId === lp.id ? null : lp.id)}
+              onClick={() => {
+                setSelectedLamppostId(selectedLamppostId === lp.id ? null : lp.id);
+                setActiveTool("select");
+              }}
             />
           ))}
 
