@@ -52,8 +52,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
-  const center = value.location || { lat: 46.2276, lng: 2.2137 };
-  const zoom = value.location ? 16 : 5;
+  const initialCenter = useMemo(() => value.location || { lat: 46.2276, lng: 2.2137 }, []);
+  const initialZoom = useMemo(() => value.location ? 16 : 5, []);
 
   const handleAddressKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
