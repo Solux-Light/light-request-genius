@@ -27,8 +27,8 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
     }]);
   };
 
-  const updateSegment = (id: string, field: string, val: any) => {
-    onChange(value.map((s) => (s.id === id ? { ...s, [field]: val } : s)));
+  const updateSegment = (id: string, updates: Record<string, any>) => {
+    onChange(value.map((s) => (s.id === id ? { ...s, ...updates } : s)));
   };
 
   const removeSegment = (id: string) => {
@@ -148,8 +148,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
             <Label className="text-xs">{l("Type", "Type")}</Label>
             <Select value={seg.type} onValueChange={(v) => {
               const def = SEGMENT_TYPES.find((t) => t.value === v);
-              updateSegment(seg.id, "type", v);
-              if (def) updateSegment(seg.id, "width", def.defaultWidth);
+              updateSegment(seg.id, { type: v, ...(def ? { width: def.defaultWidth } : {}) });
             }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
