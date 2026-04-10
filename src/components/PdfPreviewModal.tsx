@@ -17,7 +17,7 @@ interface Props {
 const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const previewRef = useRef<HTMLDivElement>(null);
-  const exportRef = useRef<HTMLDivElement>(null);
+  
 
   const safeName = form.projectName
     .normalize("NFD")
@@ -47,24 +47,11 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
           salesName={salesName}
           nowStr={nowStr}
           lang={lang}
-          mapPreviewMode="live"
           apiKey={apiKey}
         />
 
-        {/* Hidden export copy */}
-        <div style={{ position: "absolute", left: -9999 }}>
-          <PdfSubmissionDocument
-            ref={exportRef}
-            form={form}
-            salesName={salesName}
-            nowStr={nowStr}
-            lang={lang}
-            mapPreviewMode="placeholder"
-          />
-        </div>
-
         <div className="flex justify-end pt-4">
-          <PdfExportButton contentRef={exportRef} filename={`${safeName}.pdf`} lang={lang} />
+          <PdfExportButton contentRef={previewRef} filename={`${safeName}.pdf`} lang={lang} />
         </div>
       </DialogContent>
     </Dialog>
