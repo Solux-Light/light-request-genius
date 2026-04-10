@@ -26,7 +26,7 @@ const segColor = (seg: LightingSegment) => {
 };
 
 const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
-  ({ form, salesName, nowStr, lang, mapPreviewMode = "placeholder" }, ref) => {
+  ({ form, salesName, nowStr, lang, mapPreviewMode = "placeholder", apiKey }, ref) => {
     const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
     const getSegLabel = (type: string) => {
       const t = SEGMENT_TYPES.find((s) => s.value === type);
