@@ -142,6 +142,13 @@ export const defaultLightingSetup: LightingSetup = {
   orientation: "perpendicular",
 };
 
+export type ZoneLightingData = {
+  avgLux: string;
+  uniformity: string;
+  minLux: string;
+  cct: string;
+};
+
 export interface SoluxForm {
   projectName: string;
   clientName: string;
@@ -185,6 +192,7 @@ export interface SoluxForm {
   lightingNightHours: number;
   deadlineDate: string;
   technicalNotes: string;
+  zoneLightingData: Record<string, ZoneLightingData>;
 }
 
 export const defaultForm: SoluxForm = {
