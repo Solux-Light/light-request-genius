@@ -3,8 +3,8 @@ import { MapArea, MapLamppost } from "@/types/solux";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 
-const LAMP_SINGLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z";
-const LAMP_DOUBLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z M-3,0 L-12,0 M-10,-3 L-14,-3 L-14,3 L-10,3 Z";
+const LAMP_SINGLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z";
+const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z M-4,0 L-11,0 M-11,-4 Q-16,-4 -16,0 Q-16,4 -11,4 L-11,-4 Z";
 
 interface Props {
   apiKey: string;
