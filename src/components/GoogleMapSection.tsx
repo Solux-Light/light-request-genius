@@ -253,8 +253,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       <div className="relative rounded-lg overflow-hidden border border-border">
         <GoogleMap
           mapContainerStyle={{ width: "100%", height: "500px" }}
-          center={center}
-          zoom={zoom}
+          center={initialCenter}
+          zoom={initialZoom}
           onLoad={onMapLoad}
           onIdle={onMapIdle}
           onClick={handleMapClick}
