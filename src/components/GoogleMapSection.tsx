@@ -351,17 +351,17 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             return (
               <OverlayViewF
                 position={{ lat: lp.lat, lng: lp.lng }}
-                mapPaneName={OverlayView.FLOAT_PANE}
+                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
               >
-                <div className="relative" style={{ transform: "translate(-50%, -50%)" }}>
+                <div className="relative" style={{ transform: "translate(-50%, -50%)", pointerEvents: "auto" }}>
                   {/* Dashed selection circle */}
                   <svg width="56" height="56" className="absolute -top-7 -left-7 pointer-events-none">
                     <circle cx="28" cy="28" r="24" fill="none" stroke="#475569" strokeWidth="2" strokeDasharray="6 4" />
                   </svg>
                   {/* Popup */}
                   <div
-                    className="absolute flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
-                    style={{ left: 36, top: -24, whiteSpace: "nowrap" }}
+                    className="absolute z-10 flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
+                    style={{ left: 36, top: -24, whiteSpace: "nowrap", pointerEvents: "auto" }}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
