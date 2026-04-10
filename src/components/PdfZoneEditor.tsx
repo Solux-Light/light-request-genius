@@ -140,11 +140,9 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
     if (!file) return;
     setUploading(true);
     try {
-      const path = `plans/${Date.now()}_${file.name}`;
-      const { error } = await supabase.storage.from("pdf-plans").upload(path, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from("pdf-plans").getPublicUrl(path);
-      onChange({ ...value, pdfUrl: urlData.publicUrl, zones: [], lampposts: [] });
+      // Use local blob URL for immediate display
+      const localUrl = URL.createObjectURL(file);
+      onChange({ ...value, pdfUrl: localUrl, zones: [], lampposts: [] });
     } catch (err) {
       console.error("Upload failed:", err);
     }

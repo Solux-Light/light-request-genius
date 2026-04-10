@@ -111,8 +111,20 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Hauteur du mât", "Pole Height")} ({value.pole_height}m)</Label>
-          <Slider value={[value.pole_height]} onValueChange={(v) => update("pole_height", v[0])} min={4} max={14} step={0.5} />
+          <Label>{l("Hauteur du mât", "Pole Height")}</Label>
+          <div className="flex items-center gap-3">
+            <Slider value={[value.pole_height]} onValueChange={(v) => update("pole_height", v[0])} min={4} max={14} step={0.5} className="flex-1" />
+            <Input
+              type="number"
+              value={value.pole_height}
+              onChange={(e) => update("pole_height", Math.min(14, Math.max(4, parseFloat(e.target.value) || 4)))}
+              step={0.5}
+              min={4}
+              max={14}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">m</span>
+          </div>
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_pole_height} onCheckedChange={(v) => update("optimize_pole_height", !!v)} />
             <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
@@ -120,8 +132,20 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Longueur du bras", "Arm Length")} ({value.arm_length}m)</Label>
-          <Slider value={[value.arm_length]} onValueChange={(v) => update("arm_length", v[0])} min={0} max={3} step={0.1} />
+          <Label>{l("Longueur du bras", "Arm Length")}</Label>
+          <div className="flex items-center gap-3">
+            <Slider value={[value.arm_length]} onValueChange={(v) => update("arm_length", v[0])} min={0} max={3} step={0.1} className="flex-1" />
+            <Input
+              type="number"
+              value={value.arm_length}
+              onChange={(e) => update("arm_length", Math.min(3, Math.max(0, parseFloat(e.target.value) || 0)))}
+              step={0.1}
+              min={0}
+              max={3}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">m</span>
+          </div>
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_arm_length} onCheckedChange={(v) => update("optimize_arm_length", !!v)} />
             <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
@@ -129,13 +153,37 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Inclinaison", "Tilt")} ({value.tilt}°)</Label>
-          <Slider value={[value.tilt]} onValueChange={(v) => update("tilt", v[0])} min={-15} max={15} step={1} />
+          <Label>{l("Inclinaison", "Tilt")}</Label>
+          <div className="flex items-center gap-3">
+            <Slider value={[value.tilt]} onValueChange={(v) => update("tilt", v[0])} min={-15} max={15} step={1} className="flex-1" />
+            <Input
+              type="number"
+              value={value.tilt}
+              onChange={(e) => update("tilt", Math.min(15, Math.max(-15, parseInt(e.target.value) || 0)))}
+              step={1}
+              min={-15}
+              max={15}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">°</span>
+          </div>
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Espacement", "Spacing")} ({value.spacing}m)</Label>
-          <Slider value={[value.spacing]} onValueChange={(v) => update("spacing", v[0])} min={10} max={50} step={1} />
+          <Label>{l("Espacement", "Spacing")}</Label>
+          <div className="flex items-center gap-3">
+            <Slider value={[value.spacing]} onValueChange={(v) => update("spacing", v[0])} min={10} max={50} step={1} className="flex-1" />
+            <Input
+              type="number"
+              value={value.spacing}
+              onChange={(e) => update("spacing", Math.min(50, Math.max(10, parseInt(e.target.value) || 10)))}
+              step={1}
+              min={10}
+              max={50}
+              className="w-20 text-center"
+            />
+            <span className="text-sm text-muted-foreground">m</span>
+          </div>
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_spacing} onCheckedChange={(v) => update("optimize_spacing", !!v)} />
             <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
