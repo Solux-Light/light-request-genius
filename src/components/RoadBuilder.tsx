@@ -85,8 +85,8 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
               {l("Miroir", "Mirror")}
             </Button>
           )}
-          <Button type="button" variant="outline" onClick={addSegment}>
-            <Plus className="h-4 w-4 mr-1" /> {l("Ajouter un segment", "Add Segment")}
+          <Button type="button" variant="default" size="lg" className="font-bold text-base" onClick={addSegment}>
+            <Plus className="h-5 w-5 mr-2" /> {l("Ajouter un segment", "Add Segment")}
           </Button>
         </div>
       </div>

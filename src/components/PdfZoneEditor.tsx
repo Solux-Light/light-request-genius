@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS } from "@/types/solux";
-import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   value: PdfZoneValue;
@@ -140,11 +139,9 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
     if (!file) return;
     setUploading(true);
     try {
-      const path = `plans/${Date.now()}_${file.name}`;
-      const { error } = await supabase.storage.from("pdf-plans").upload(path, file);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from("pdf-plans").getPublicUrl(path);
-      onChange({ ...value, pdfUrl: urlData.publicUrl, zones: [], lampposts: [] });
+      // Use local blob URL for immediate display
+      const localUrl = URL.createObjectURL(file);
+      onChange({ ...value, pdfUrl: localUrl, zones: [], lampposts: [] });
     } catch (err) {
       console.error("Upload failed:", err);
     }

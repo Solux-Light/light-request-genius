@@ -259,7 +259,6 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
           onIdle={onMapIdle}
           onClick={handleMapClick}
           onDblClick={handleMapDblClick}
-          mapTypeId={mapType}
           options={{
             streetViewControl: false,
             mapTypeControl: false,
@@ -267,6 +266,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             gestureHandling: "greedy",
             tilt: 0,
             heading: 0,
+            mapTypeId: mapType,
+            draggable: activeTool === "select",
             draggableCursor: activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
           }}
         >
