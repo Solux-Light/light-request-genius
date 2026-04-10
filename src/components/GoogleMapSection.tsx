@@ -37,7 +37,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const mapRef = useRef<google.maps.Map | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const [mapType, setMapType] = useState<string>("hybrid");
+  const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
   const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost">("select");
@@ -264,6 +264,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             streetViewControl: false,
             mapTypeControl: false,
             fullscreenControl: false,
+            gestureHandling: "greedy",
             tilt: 0,
             heading: 0,
             draggableCursor: activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
