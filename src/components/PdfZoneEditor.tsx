@@ -26,9 +26,8 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
   const [selectedLamppostId, setSelectedLamppostId] = useState<string | null>(null);
   const [autoFitScale, setAutoFitScale] = useState(1);
 
-  const drawingRef = useRef(false);
-  const lassoPoints = useRef<{ x: number; y: number }[]>([]);
-  const lastThrottle = useRef(0);
+  // Click-to-place lasso points (like Google Map)
+  const [lassoPath, setLassoPath] = useState<{ x: number; y: number }[]>([]);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
@@ -89,6 +88,33 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
         }
       });
 
+      // Draw in-progress lasso path
+      if (lassoPath.length > 0) {
+        ctx.beginPath();
+        ctx.moveTo(lassoPath[0].x * canvas.width, lassoPath[0].y * canvas.height);
+        lassoPath.forEach((p, i) => {
+          if (i > 0) ctx.lineTo(p.x * canvas.width, p.y * canvas.height);
+        });
+        // Close visually
+        ctx.lineTo(lassoPath[0].x * canvas.width, lassoPath[0].y * canvas.height);
+        ctx.strokeStyle = selectedColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Draw points
+        lassoPath.forEach((p, i) => {
+          ctx.beginPath();
+          ctx.arc(p.x * canvas.width, p.y * canvas.height, i === 0 ? 7 : 5, 0, Math.PI * 2);
+          ctx.fillStyle = selectedColor;
+          ctx.fill();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        });
+      }
+
       // Draw lampposts
       const lamps = (value.lampposts || []).filter((lp) => lp.page === currentPage);
       lamps.forEach((lp) => {
@@ -132,14 +158,13 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
       } catch {}
     };
     render();
-  }, [pdfDoc, currentPage, zoom, rotation, value.zones, value.lampposts, selectedLamppostId]);
+  }, [pdfDoc, currentPage, zoom, rotation, value.zones, value.lampposts, selectedLamppostId, lassoPath]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      // Use local blob URL for immediate display
       const localUrl = URL.createObjectURL(file);
       onChange({ ...value, pdfUrl: localUrl, zones: [], lampposts: [] });
     } catch (err) {
@@ -148,17 +173,41 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
     setUploading(false);
   };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+  const closeLasso = useCallback(() => {
+    if (lassoPath.length >= 3) {
+      const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
+      const newZone: PdfZone = {
+        id: crypto.randomUUID(),
+        paths: lassoPath,
+        color: selectedColor,
+        name: `Zone ${value.zones.length + 1}`,
+        page: currentPage,
+      };
+      onChange({ ...value, zones: [...value.zones, newZone] });
+      setSelectedColor(COLOR_OPTIONS[nextIdx]);
+      setColorIndex(nextIdx);
+    }
+    setLassoPath([]);
+  }, [lassoPath, colorIndex, selectedColor, onChange, value, currentPage]);
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const nx = (e.clientX - rect.left) / rect.width;
     const ny = (e.clientY - rect.top) / rect.height;
 
     if (activeTool === "lasso") {
-      drawingRef.current = true;
-      lassoPoints.current = [{ x: nx, y: ny }];
+      // If clicking near the first point and we have enough points, close the zone
+      if (lassoPath.length >= 3) {
+        const first = lassoPath[0];
+        const dist = Math.sqrt((nx - first.x) ** 2 + (ny - first.y) ** 2);
+        if (dist < 0.02) {
+          closeLasso();
+          return;
+        }
+      }
+      setLassoPath((prev) => [...prev, { x: nx, y: ny }]);
     } else if (activeTool === "lamppost") {
-      // Check existing lampposts
       const existing = (value.lampposts || []).find(
         (lp) => lp.page === currentPage && Math.abs(lp.x - nx) < 0.02 && Math.abs(lp.y - ny) < 0.02
       );
@@ -179,36 +228,11 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
     }
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (!drawingRef.current || !canvasRef.current) return;
-    const now = Date.now();
-    if (now - lastThrottle.current < 58) return;
-    lastThrottle.current = now;
-    const rect = canvasRef.current.getBoundingClientRect();
-    lassoPoints.current.push({
-      x: (e.clientX - rect.left) / rect.width,
-      y: (e.clientY - rect.top) / rect.height,
-    });
-  };
-
-  const handleCanvasMouseUp = () => {
-    if (!drawingRef.current) return;
-    drawingRef.current = false;
-    const points = lassoPoints.current;
-    if (points.length >= 3) {
-      const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
-      const newZone: PdfZone = {
-        id: crypto.randomUUID(),
-        paths: points,
-        color: selectedColor,
-        name: `Zone ${value.zones.length + 1}`,
-        page: currentPage,
-      };
-      onChange({ ...value, zones: [...value.zones, newZone] });
-      setSelectedColor(COLOR_OPTIONS[nextIdx]);
-      setColorIndex(nextIdx);
+  const handleCanvasDblClick = (e: React.MouseEvent) => {
+    if (activeTool === "lasso") {
+      e.preventDefault();
+      closeLasso();
     }
-    lassoPoints.current = [];
   };
 
   if (!value.pdfUrl) {
@@ -256,6 +280,16 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
             </Button>
           </div>
         )}
+        {activeTool === "lasso" && lassoPath.length > 0 && (
+          <Button type="button" size="sm" variant="default" onClick={closeLasso} disabled={lassoPath.length < 3}>
+            ✓ {l("Fermer la zone", "Close zone")} ({lassoPath.length} pts)
+          </Button>
+        )}
+        {activeTool === "lasso" && lassoPath.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
+          </span>
+        )}
         <div className="w-px h-6 bg-border" />
         <Button type="button" size="sm" variant="outline" onClick={() => setZoom((z) => Math.min(z + 0.25, 4))}>
           <Plus className="h-4 w-4" />
@@ -277,7 +311,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
             </Button>
           </div>
         )}
-        <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, pdfUrl: "", zones: [], lampposts: [] })}>
+        <Button type="button" size="sm" variant="outline" onClick={() => { setLassoPath([]); onChange({ ...value, pdfUrl: "", zones: [], lampposts: [] }); }}>
           {l("Changer le PDF", "Change PDF")}
         </Button>
       </div>
@@ -286,9 +320,8 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
       <div ref={containerRef} className="border rounded-lg overflow-auto max-h-[600px] relative">
         <canvas
           ref={canvasRef}
-          onMouseDown={handleCanvasMouseDown}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseUp={handleCanvasMouseUp}
+          onClick={handleCanvasClick}
+          onDoubleClick={handleCanvasDblClick}
           style={{ cursor: activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "default" }}
         />
         {/* Selected lamppost popup */}
@@ -345,7 +378,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
         {(value.lampposts || []).length > 0 && (
           <div className="flex items-center gap-2">
             <span>💡 {(value.lampposts || []).length} {l("lampadaire(s)", "lamppost(s)")}</span>
-            <Button size="sm" variant="outline" onClick={() => onChange({ ...value, lampposts: [] })}>
+            <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, lampposts: [] })}>
               {l("Effacer les lampadaires", "Clear lampposts")}
             </Button>
           </div>
