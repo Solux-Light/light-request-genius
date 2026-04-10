@@ -1,32 +1,6 @@
 import { forwardRef } from "react";
 import { SoluxForm, SEGMENT_TYPES, SEGMENT_COLORS, LightingSegment } from "@/types/solux";
-
-const buildStaticMapUrl = (
-  apiKey: string,
-  location: { lat: number; lng: number },
-  areas: { paths: { lat: number; lng: number }[]; color: string }[],
-  lampposts: { lat: number; lng: number }[],
-  zoom?: number,
-  center?: { lat: number; lng: number }
-) => {
-  const c = center || location;
-  const z = zoom || 16;
-  const base = `https://maps.googleapis.com/maps/api/staticmap?center=${c.lat},${c.lng}&zoom=${z}&size=760x380&scale=2&maptype=hybrid&key=${apiKey}`;
-
-  // Add polygon paths
-  const polyParts = areas.map((area) => {
-    const hex = area.color.replace("#", "");
-    const pathStr = area.paths.map((p) => `${p.lat},${p.lng}`).join("|");
-    return `&path=color:0x${hex}88|fillcolor:0x${hex}44|weight:2|${pathStr}|${area.paths[0].lat},${area.paths[0].lng}`;
-  });
-
-  // Add lamppost markers
-  const markerParts = lampposts.length > 0
-    ? `&markers=color:yellow|size:small|${lampposts.map((lp) => `${lp.lat},${lp.lng}`).join("|")}`
-    : "";
-
-  return base + polyParts.join("") + markerParts;
-};
+import ProjectLiveMapPreview from "@/components/ProjectLiveMapPreview";
 
 const PRODUCT_LABELS: Record<string, string> = {
   SSLXPRO: "SOLUX PRO",
@@ -101,19 +75,17 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
               {l("Carte du projet", "Project Map")}
             </h2>
             {apiKey ? (
-              <img
-                src={buildStaticMapUrl(
-                  apiKey,
-                  form.location,
-                  form.areas,
-                  form.lampposts.map((lp) => ({ lat: lp.lat, lng: lp.lng })),
-                  form.mapZoom,
-                  form.mapCenter
-                )}
-                alt="Project Map"
-                style={{ width: "100%", borderRadius: 4, border: "1px solid #e5e7eb" }}
-                crossOrigin="anonymous"
-              />
+              <div data-map-preview>
+                <ProjectLiveMapPreview
+                  apiKey={apiKey}
+                  location={form.location}
+                  areas={form.areas}
+                  lampposts={form.lampposts}
+                  zoom={form.mapZoom}
+                  center={form.mapCenter}
+                  lang={lang}
+                />
+              </div>
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>{l("Carte non disponible", "Map not available")}</p>
             )}

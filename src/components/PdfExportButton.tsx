@@ -14,7 +14,21 @@ const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en" }:
   const handleExport = async () => {
     if (!contentRef.current) return;
     await document.fonts.ready;
-    await new Promise((r) => requestAnimationFrame(r));
+    // Wait for all images (including static map) to load
+    const images = contentRef.current.querySelectorAll("img");
+    await Promise.all(
+      Array.from(images).map(
+        (img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((r) => {
+                img.onload = r;
+                img.onerror = r;
+              })
+      )
+    );
+    // Wait for Google Maps tiles to fully render
+    await new Promise((r) => setTimeout(r, 2000));
 
     const html2canvas = (await import("html2canvas")).default;
     const { jsPDF } = await import("jspdf");
