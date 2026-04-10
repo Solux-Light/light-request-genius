@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, OverlayViewF, OverlayView, PolylineF } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
@@ -393,47 +393,24 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             />
           ))}
 
-          {/* Selected lamppost — dashed circle + popup */}
+          {/* Selected lamppost marker highlight only */}
           {selectedLamppostId && (() => {
             const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
             if (!lp) return null;
             return (
-              <OverlayViewF
+              <MarkerF
+                key={`selection-ring-${lp.id}-${lp.rotation || 0}`}
                 position={{ lat: lp.lat, lng: lp.lng }}
-                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-              >
-                <div className="relative" style={{ transform: "translate(-50%, -50%)", pointerEvents: "auto" }}>
-                  {/* Dashed selection circle */}
-                  <svg width="56" height="56" className="absolute -top-7 -left-7 pointer-events-none">
-                    <circle cx="28" cy="28" r="24" fill="none" stroke="#475569" strokeWidth="2" strokeDasharray="6 4" />
-                  </svg>
-                  {/* Popup */}
-                  <div
-                    className="absolute z-10 flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
-                    style={{ left: 36, top: -24, whiteSpace: "nowrap", pointerEvents: "auto" }}
-                    onMouseDown={(e) => {
-                      suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
-                      e.stopPropagation();
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => {
-                      suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
-                      e.stopPropagation();
-                    }}
-                  >
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); rotateLamppost(lp.id, -15); }}>
-                      <RotateCcw className="h-4 w-4" />
-                    </button>
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); rotateLamppost(lp.id, 15); }}>
-                      <RotateCw className="h-4 w-4" />
-                    </button>
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); deleteLamppost(lp.id); }}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </OverlayViewF>
+                zIndex={999}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillOpacity: 0,
+                  strokeColor: "#475569",
+                  strokeOpacity: 1,
+                  strokeWeight: 2,
+                  scale: 24,
+                }}
+              />
             );
           })()}
 
@@ -442,6 +419,36 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             <MarkerF position={value.location} />
           )}
         </GoogleMap>
+
+        {selectedLamppostId && (() => {
+          const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
+          if (!lp) return null;
+          return (
+            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2 rounded-xl border border-border bg-background/95 p-2 shadow-lg backdrop-blur-sm">
+              <button
+                type="button"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+                onClick={() => rotateLamppost(lp.id, -15)}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+                onClick={() => rotateLamppost(lp.id, 15)}
+              >
+                <RotateCw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                className="h-10 w-10 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={() => deleteLamppost(lp.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Zoom controls */}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
