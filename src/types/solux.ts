@@ -244,4 +244,5 @@ export const defaultForm: SoluxForm = {
   lightingNightHours: 12,
   deadlineDate: "",
   technicalNotes: "",
+  zoneLightingData: {},
 };
