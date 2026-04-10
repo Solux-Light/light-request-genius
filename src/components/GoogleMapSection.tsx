@@ -404,6 +404,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                   <div className="flex gap-1">
                     {COLOR_OPTIONS.map((c) => (
                       <button
+                        type="button"
                         key={c}
                         className={`w-4 h-4 rounded-full border ${editingColor === c ? "border-foreground" : "border-transparent"}`}
                         style={{ backgroundColor: c }}
@@ -411,18 +412,18 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                       />
                     ))}
                   </div>
-                  <Button size="sm" variant="ghost" onClick={saveEditing}>✓</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditingAreaId(null)}>✕</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={saveEditing}>✓</Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingAreaId(null)}>✕</Button>
                 </>
               ) : (
                 <>
                   <div className="w-4 h-4 rounded-full" style={{ backgroundColor: area.color }} />
                   <span className="text-sm flex-1">{area.name || "Zone"}</span>
                   <span className="text-xs text-muted-foreground">{area.type}</span>
-                  <Button size="sm" variant="ghost" onClick={() => startEditing(area)}>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => startEditing(area)}>
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => clearArea(area.id)}>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => clearArea(area.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </>
