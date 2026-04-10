@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS } from "@/types/solux";
-import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   value: PdfZoneValue;
