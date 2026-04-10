@@ -261,7 +261,7 @@ const ProductSelectionSection = ({
           <Textarea
             value={alternativeDetails}
             onChange={(e) => onAlternativeDetailsChange(e.target.value)}
-            placeholder={l("Détails de l'alternative...", "Alternative details...")}
+            placeholder={l("Détails et suggestions d'alternative...", "Alternative details and suggestions")}
             rows={2}
           />
         )}
