@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import { SoluxForm, SEGMENT_TYPES, SEGMENT_COLORS, LightingSegment } from "@/types/solux";
+import ProjectLiveMapPreview, { ProjectMapPreview } from "@/components/ProjectLiveMapPreview";
 
 const PRODUCT_LABELS: Record<string, string> = {
   SSLXPRO: "SOLUX PRO",
