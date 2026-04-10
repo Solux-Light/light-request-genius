@@ -6,6 +6,7 @@ import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool
 import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
+const MAP_CLICK_SUPPRESSION_MS = 250;
 
 interface Props {
   apiKey: string;
@@ -29,15 +30,16 @@ const parseLatLng = (input: string) => {
   return { lat, lng };
 };
 
-// Top-down lamppost: circle (pole) + arm line + luminaire rectangle
-const LAMP_SINGLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z";
-const LAMP_DOUBLE = "M0,0 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0 M3,0 L12,0 M10,-3 L14,-3 L14,3 L10,3 Z M-3,0 L-12,0 M-10,-3 L-14,-3 L-14,3 L-10,3 Z";
+// Top view: pole core + short arm + rounded luminaire head
+const LAMP_SINGLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z";
+const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M4,0 L11,0 M11,-4 Q16,-4 16,0 Q16,4 11,4 L11,-4 Z M-4,0 L-11,0 M-11,-4 Q-16,-4 -16,0 Q-16,4 -11,4 L-11,-4 Z";
 
 const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
   const mapRef = useRef<google.maps.Map | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const suppressMapClickUntilRef = useRef(0);
   const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
@@ -127,14 +129,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   }, [lassoPath, colorIndex, selectedColor, onChange, value]);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (Date.now() < suppressMapClickUntilRef.current) {
+      return;
+    }
+
     if (activeTool === "lasso" && e.latLng) {
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
-      // Don't create a new lamppost if one is already selected (user is interacting with popup)
-      if (selectedLamppostId) {
-        setSelectedLamppostId(null);
-        return;
-      }
       const newLamppost: MapLamppost = {
         id: crypto.randomUUID(),
         lat: e.latLng.lat(),
@@ -145,7 +146,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, lampposts: [...(value.lampposts || []), newLamppost] });
       setSelectedLamppostId(newLamppost.id);
     }
-  }, [activeTool, lamppostType, onChange, value, selectedLamppostId]);
+  }, [activeTool, lamppostType, onChange, value]);
 
   const handleMapDblClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "lasso") {
@@ -368,18 +369,24 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                   <div
                     className="absolute z-10 flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
                     style={{ left: 36, top: -24, whiteSpace: "nowrap", pointerEvents: "auto" }}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => {
+                      suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
+                      e.stopPropagation();
+                    }}
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => {
+                      suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
+                      e.stopPropagation();
+                    }}
                   >
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); rotateLamppost(lp.id, -15); }}>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); rotateLamppost(lp.id, -15); }}>
                       <RotateCcw className="h-4 w-4" />
                     </button>
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); rotateLamppost(lp.id, 15); }}>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); rotateLamppost(lp.id, 15); }}>
                       <RotateCw className="h-4 w-4" />
                     </button>
-                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors" onClick={(e) => { e.stopPropagation(); deleteLamppost(lp.id); }}>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors" onClick={(e) => { suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS; e.stopPropagation(); deleteLamppost(lp.id); }}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
