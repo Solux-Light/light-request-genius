@@ -362,16 +362,20 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                   <div
                     className="absolute flex gap-1.5 bg-card border border-border rounded-xl shadow-lg p-2"
                     style={{ left: 36, top: -24, whiteSpace: "nowrap" }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <Button type="button" size="sm" variant="outline" className="h-9 w-9 p-0 rounded-lg" onClick={() => rotateLamppost(lp.id, -15)}>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); rotateLamppost(lp.id, -15); }}>
                       <RotateCcw className="h-4 w-4" />
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" className="h-9 w-9 p-0 rounded-lg" onClick={() => rotateLamppost(lp.id, 15)}>
+                    </button>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors" onClick={(e) => { e.stopPropagation(); rotateLamppost(lp.id, 15); }}>
                       <RotateCw className="h-4 w-4" />
-                    </Button>
-                    <Button type="button" size="sm" variant="destructive" className="h-9 w-9 p-0 rounded-lg" onClick={() => deleteLamppost(lp.id)}>
+                    </button>
+                    <button type="button" className="h-9 w-9 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors" onClick={(e) => { e.stopPropagation(); deleteLamppost(lp.id); }}>
                       <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </button>
                   </div>
                 </div>
               </OverlayViewF>
