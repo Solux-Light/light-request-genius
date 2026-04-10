@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, InfoWindowF, PolylineF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,8 @@ const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M-14,0 L-4,0 M4,0
 const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
   const mapRef = useRef<google.maps.Map | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const [mapType, setMapType] = useState<string>("hybrid");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
@@ -71,6 +73,25 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, location: parsed });
     }
   };
+  // Google Places Autocomplete
+  useEffect(() => {
+    if (!isLoaded || !addressInputRef.current || autocompleteRef.current) return;
+    const ac = new google.maps.places.Autocomplete(addressInputRef.current, {
+      types: ["geocode", "establishment"],
+    });
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (place.geometry?.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        const addr = place.formatted_address || place.name || value.address;
+        onChange({ ...value, address: addr, location: { lat, lng } });
+        mapRef.current?.panTo({ lat, lng });
+        mapRef.current?.setZoom(17);
+      }
+    });
+    autocompleteRef.current = ac;
+  }, [isLoaded]);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -173,6 +194,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     <div className="space-y-3">
       {/* Address Input */}
       <Input
+        ref={addressInputRef}
         value={value.address}
         onChange={(e) => onChange({ ...value, address: e.target.value })}
         onKeyDown={handleAddressKeyDown}
