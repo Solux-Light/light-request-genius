@@ -176,7 +176,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     onChange({
       ...value,
       lampposts: (value.lampposts || []).map((lp) =>
-        lp.id === id ? { ...lp, rotation: ((lp.rotation || 0) + delta) % 360 } : lp
+        lp.id === id ? { ...lp, rotation: (((lp.rotation || 0) + delta) + 360) % 360 } : lp
       ),
     });
   };
@@ -317,7 +317,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
           {/* Lampposts */}
           {(value.lampposts || []).map((lp) => (
             <MarkerF
-              key={lp.id}
+              key={`${lp.id}-${lp.rotation || 0}-${selectedLamppostId === lp.id ? "selected" : "idle"}`}
               position={{ lat: lp.lat, lng: lp.lng }}
               draggable
               onDragEnd={(e) => {
