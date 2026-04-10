@@ -35,6 +35,9 @@ const LAMP_DOUBLE = "M0,0 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 M-14,0 L-4,0 M4,0
 const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
   const mapRef = useRef<google.maps.Map | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
   const [mapType, setMapType] = useState<string>("hybrid");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
