@@ -73,8 +73,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, location: parsed });
     }
   };
+  // Google Places Autocomplete
+  useEffect(() => {
+    if (!isLoaded || !addressInputRef.current || autocompleteRef.current) return;
+    const ac = new google.maps.places.Autocomplete(addressInputRef.current, {
+      types: ["geocode", "establishment"],
+    });
+    ac.addListener("place_changed", () => {
+      const place = ac.getPlace();
+      if (place.geometry?.location) {
+        const lat = place.geometry.location.lat();
+        const lng = place.geometry.location.lng();
+        const addr = place.formatted_address || place.name || value.address;
+        onChange({ ...value, address: addr, location: { lat, lng } });
+        mapRef.current?.panTo({ lat, lng });
+        mapRef.current?.setZoom(17);
+      }
+    });
+    autocompleteRef.current = ac;
+  }, [isLoaded]);
 
-  const onMapLoad = useCallback((map: google.maps.Map) => {
+
     mapRef.current = map;
   }, []);
 
