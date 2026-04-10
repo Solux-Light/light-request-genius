@@ -95,27 +95,27 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
         </section>
 
         {/* Map preview (zone + map mode) */}
-        {form.locationMode === "map" && form.location && (
+         {form.locationMode === "map" && form.location && (
           <section style={{ marginBottom: 20 }}>
             <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
               {l("Carte du projet", "Project Map")}
             </h2>
-            {mapPreviewMode === "live" && apiKey ? (
-              <ProjectLiveMapPreview
-                apiKey={apiKey}
-                location={form.location}
-                areas={form.areas}
-                lampposts={form.lampposts}
-                zoom={form.mapZoom}
-                center={form.mapCenter}
-                lang={lang}
+            {apiKey ? (
+              <img
+                src={buildStaticMapUrl(
+                  apiKey,
+                  form.location,
+                  form.areas,
+                  form.lampposts.map((lp) => ({ lat: lp.lat, lng: lp.lng })),
+                  form.mapZoom,
+                  form.mapCenter
+                )}
+                alt="Project Map"
+                style={{ width: "100%", borderRadius: 4, border: "1px solid #e5e7eb" }}
+                crossOrigin="anonymous"
               />
             ) : (
-              <ProjectMapPreview
-                location={form.location}
-                areas={form.areas}
-                lampposts={form.lampposts}
-              />
+              <p style={{ color: "#999", fontStyle: "italic" }}>{l("Carte non disponible", "Map not available")}</p>
             )}
           </section>
         )}
