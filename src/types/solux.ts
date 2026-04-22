@@ -157,6 +157,17 @@ export type ZoneLightingData = {
   cct: string;
   lightingSegments: LightingSegment[];
   lightingNightHours: number;
+  product: string;
+  luminaireHeight: string;
+  spacing: string;
+  optimizeHeight: boolean;
+  optimizeSpacing: boolean;
+  batteryChoice: "standard" | "custom";
+  batteryWh: string;
+  panelChoice: "standard" | "custom";
+  panelWp: string;
+  alternativeAccepted: boolean;
+  alternativeDetails: string;
 };
 
 export const createDefaultZoneLightingData = (): ZoneLightingData => ({
@@ -166,6 +177,17 @@ export const createDefaultZoneLightingData = (): ZoneLightingData => ({
   cct: "4000K",
   lightingSegments: createDefaultLightingSegments(),
   lightingNightHours: DEFAULT_LIGHTING_NIGHT_HOURS,
+  product: "",
+  luminaireHeight: "",
+  spacing: "",
+  optimizeHeight: false,
+  optimizeSpacing: false,
+  batteryChoice: "standard",
+  batteryWh: "",
+  panelChoice: "standard",
+  panelWp: "",
+  alternativeAccepted: false,
+  alternativeDetails: "",
 });
 
 export interface SoluxForm {
