@@ -100,7 +100,12 @@ const SoluxIntake = () => {
   })), [allZones, l]);
   const selectedZoneOption = zoneOptions.find((zone) => zone.id === form.assignedArea);
 
-  const syncAssignedZoneData = useCallback((updates: Partial<Pick<SoluxForm, "avgLux" | "uniformity" | "minLux" | "cct" | "lightingSegments" | "lightingNightHours">>) => {
+  const syncAssignedZoneData = useCallback((updates: Partial<Pick<SoluxForm,
+    "avgLux" | "uniformity" | "minLux" | "cct" | "lightingSegments" | "lightingNightHours"
+    | "product" | "luminaireHeight" | "spacing" | "optimizeHeight" | "optimizeSpacing"
+    | "batteryChoice" | "batteryWh" | "panelChoice" | "panelWp"
+    | "alternativeAccepted" | "alternativeDetails"
+  >>) => {
     setForm((current) => {
       const nextLightingSegments = updates.lightingSegments?.map((segment) => ({ ...segment }));
       const nextForm: SoluxForm = {
@@ -164,6 +169,17 @@ const SoluxIntake = () => {
         cct: zoneData.cct,
         lightingSegments: zoneData.lightingSegments.map((segment) => ({ ...segment })),
         lightingNightHours: zoneData.lightingNightHours,
+        product: zoneData.product,
+        luminaireHeight: zoneData.luminaireHeight,
+        spacing: zoneData.spacing,
+        optimizeHeight: zoneData.optimizeHeight,
+        optimizeSpacing: zoneData.optimizeSpacing,
+        batteryChoice: zoneData.batteryChoice,
+        batteryWh: zoneData.batteryWh,
+        panelChoice: zoneData.panelChoice,
+        panelWp: zoneData.panelWp,
+        alternativeAccepted: zoneData.alternativeAccepted,
+        alternativeDetails: zoneData.alternativeDetails,
         zoneLightingData: nextZoneLightingData,
       };
     });
