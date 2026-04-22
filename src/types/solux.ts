@@ -86,6 +86,14 @@ export type LightingSegment = {
   intensity?: number;
 };
 
+export const DEFAULT_LIGHTING_NIGHT_HOURS = 12;
+
+export const createDefaultLightingSegments = (): LightingSegment[] => ([
+  { id: crypto.randomUUID(), mode: "sensor", hours: 4, min: 30, max: 100 },
+  { id: crypto.randomUUID(), mode: "fixed", hours: 4, intensity: 60 },
+  { id: crypto.randomUUID(), mode: "fixed", hours: 4, intensity: 100 },
+]);
+
 export type ProductAssignment = {
   id: string;
   zone: string;
@@ -147,7 +155,18 @@ export type ZoneLightingData = {
   uniformity: string;
   minLux: string;
   cct: string;
+  lightingSegments: LightingSegment[];
+  lightingNightHours: number;
 };
+
+export const createDefaultZoneLightingData = (): ZoneLightingData => ({
+  avgLux: "",
+  uniformity: "",
+  minLux: "",
+  cct: "4000K",
+  lightingSegments: createDefaultLightingSegments(),
+  lightingNightHours: DEFAULT_LIGHTING_NIGHT_HOURS,
+});
 
 export interface SoluxForm {
   projectName: string;
@@ -240,8 +259,8 @@ export const defaultForm: SoluxForm = {
   roadProfile: [],
   roadLighting: { ...defaultLightingSetup },
   roadSegmentLighting: {},
-  lightingSegments: [],
-  lightingNightHours: 12,
+  lightingSegments: createDefaultLightingSegments(),
+  lightingNightHours: DEFAULT_LIGHTING_NIGHT_HOURS,
   deadlineDate: "",
   technicalNotes: "",
   zoneLightingData: {},
