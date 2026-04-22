@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { LightingSegment } from "@/types/solux";
+import { DEFAULT_LIGHTING_NIGHT_HOURS, LightingSegment, createDefaultLightingSegments } from "@/types/solux";
 
 const snap30 = (h: number) => Math.round(h * 2) / 2;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -9,11 +9,11 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const mkSensor = (hours: number, min: number, max: number): LightingSegment => ({
   id: crypto.randomUUID(), mode: "sensor", hours, min, max,
 });
-const mkFixed = (hours: number, intensity: number): LightingSegment => ({
-  id: crypto.randomUUID(), mode: "fixed", hours, intensity,
-});
 
-const defaultSegments: LightingSegment[] = [mkSensor(4, 30, 100), mkFixed(4, 60), mkFixed(4, 100)];
+const cloneSegments = (segments?: LightingSegment[]) => {
+  if (segments && segments.length > 0) return segments.map((segment) => ({ ...segment }));
+  return createDefaultLightingSegments();
+};
 
 const segColor = (seg: LightingSegment) => {
   if (seg.mode === "sensor") return "rgb(137, 250, 140)";
@@ -28,14 +28,17 @@ const segTextColor = (seg: LightingSegment) => {
 };
 
 interface Props {
+  valueSegments?: LightingSegment[];
+  valueNightHours?: number;
   onChange: (segments: LightingSegment[], nightHours: number) => void;
   lang?: "fr" | "en";
 }
 
-const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
-  const [nightHours, setNightHours] = useState(12);
-  const [segments, setSegments] = useState<LightingSegment[]>([...defaultSegments]);
-  const [selectedId, setSelectedId] = useState(defaultSegments[0].id);
+const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang = "en" }: Props) => {
+  const initialSegmentsRef = useRef<LightingSegment[]>(cloneSegments(valueSegments));
+  const [nightHours, setNightHours] = useState(valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS);
+  const [segments, setSegments] = useState<LightingSegment[]>(initialSegmentsRef.current);
+  const [selectedId, setSelectedId] = useState(initialSegmentsRef.current[0].id);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -44,8 +47,18 @@ const LightingScenarioEditor = ({ onChange, lang = "en" }: Props) => {
   const selected = segments.find((s) => s.id === selectedId) || segments[0];
 
   useEffect(() => {
-    onChange(segments, nightHours);
-  }, [segments, nightHours]);
+    const nextSegments = cloneSegments(valueSegments);
+    setSegments(nextSegments);
+    setSelectedId((current) => nextSegments.some((segment) => segment.id === current) ? current : nextSegments[0].id);
+  }, [valueSegments]);
+
+  useEffect(() => {
+    setNightHours(valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS);
+  }, [valueNightHours]);
+
+  useEffect(() => {
+    onChange(segments.map((segment) => ({ ...segment })), nightHours);
+  }, [segments, nightHours, onChange]);
 
   const normalise = (segs: LightingSegment[], total: number): LightingSegment[] => {
     const sum = segs.reduce((s, seg) => s + seg.hours, 0);

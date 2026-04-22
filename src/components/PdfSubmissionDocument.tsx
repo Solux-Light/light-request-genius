@@ -108,22 +108,49 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
               {l("Niveaux d'éclairage", "Lighting Levels")}
             </h2>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {[
-                  [l("Zone assignée", "Assigned Zone"), form.assignedArea || "—"],
-                  [l("Lux moyen", "Average Lux"), form.avgLux || "—"],
-                  [l("Uniformité", "Uniformity"), form.uniformity || "—"],
-                  [l("Lux minimum", "Min Lux"), form.minLux || "—"],
-                  ["CCT", form.cct],
-                ].map(([label, val], i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
-                    <td style={{ padding: "4px 8px" }}>{val}</td>
-                  </tr>
+            {Object.keys(form.zoneLightingData).length > 0 ? Object.entries(form.zoneLightingData).map(([zoneId, zoneData]) => (
+              <div key={zoneId} style={{ marginBottom: 12, padding: 8, border: "1px solid #e5e7eb", borderRadius: 4 }}>
+                <p style={{ fontWeight: 700, marginBottom: 6 }}>{zoneId}</p>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <tbody>
+                    {[
+                      [l("Lux moyen", "Average Lux"), zoneData.avgLux || "—"],
+                      [l("Uniformité", "Uniformity"), zoneData.uniformity || "—"],
+                      [l("Lux minimum", "Min Lux"), zoneData.minLux || "—"],
+                      ["CCT", zoneData.cct || "—"],
+                      [l("Durée de nuit", "Night Duration"), `${zoneData.lightingNightHours}h`],
+                    ].map(([label, val], i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
+                        <td style={{ padding: "4px 8px" }}>{val}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {zoneData.lightingSegments.length > 0 && zoneData.lightingSegments.map((seg, i) => (
+                  <p key={seg.id} style={{ fontSize: 11, marginTop: 4 }}>
+                    {l("Période", "Period")} {i + 1}: {seg.mode === "sensor" ? `Sensor (${seg.min}%-${seg.max}%)` : `Fixed (${seg.intensity}%)`} — {seg.hours}h
+                  </p>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                  {[
+                    [l("Zone assignée", "Assigned Zone"), form.assignedArea || "—"],
+                    [l("Lux moyen", "Average Lux"), form.avgLux || "—"],
+                    [l("Uniformité", "Uniformity"), form.uniformity || "—"],
+                    [l("Lux minimum", "Min Lux"), form.minLux || "—"],
+                    ["CCT", form.cct],
+                  ].map(([label, val], i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
+                      <td style={{ padding: "4px 8px" }}>{val}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </section>
         )}
 
@@ -185,7 +212,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
         )}
 
         {/* Lighting Programming */}
-        {form.lightingSegments.length > 0 && (
+        {form.projectType !== "zone" && form.lightingSegments.length > 0 && (
           <section style={{ marginBottom: 20 }}>
             <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
               {l("Programmation d'éclairage", "Lighting Programming")}

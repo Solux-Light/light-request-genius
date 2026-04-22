@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
 import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
+import { getLamppostIconOptions, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 const MAP_CLICK_SUPPRESSION_MS = 250;
@@ -28,49 +29,6 @@ const parseLatLng = (input: string) => {
   const lng = parseFloat(nums[1].replace(",", "."));
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
-};
-
-const rotatePoint = (x: number, y: number, angleDeg: number) => {
-  const angle = (angleDeg * Math.PI) / 180;
-  return {
-    x: x * Math.cos(angle) - y * Math.sin(angle),
-    y: x * Math.sin(angle) + y * Math.cos(angle),
-  };
-};
-
-const toPathPoint = ({ x, y }: { x: number; y: number }) => `${x.toFixed(2)},${y.toFixed(2)}`;
-
-const buildOpenPath = (points: Array<[number, number]>, angleDeg: number) => {
-  const rotated = points.map(([x, y]) => rotatePoint(x, y, angleDeg));
-  return `M${toPathPoint(rotated[0])} L${rotated.slice(1).map(toPathPoint).join(" L")}`;
-};
-
-const buildClosedPath = (points: Array<[number, number]>, angleDeg: number) => {
-  const rotated = points.map(([x, y]) => rotatePoint(x, y, angleDeg));
-  return `${buildOpenPath(points, angleDeg)} Z`;
-};
-
-const getLamppostPath = (type: "single" | "double", rotation = 0) => {
-  const pole = buildClosedPath([
-    [-3, -4],
-    [3, -4],
-    [4, -3],
-    [4, 3],
-    [3, 4],
-    [-3, 4],
-    [-4, 3],
-    [-4, -3],
-  ], rotation);
-  const rightArm = buildOpenPath([[4, 0], [10, 0]], rotation);
-  const rightHead = buildClosedPath([[10, -3.5], [16, -3.5], [16, 3.5], [10, 3.5]], rotation);
-
-  if (type === "double") {
-    const leftArm = buildOpenPath([[-4, 0], [-10, 0]], rotation);
-    const leftHead = buildClosedPath([[-10, -3.5], [-16, -3.5], [-16, 3.5], [-10, 3.5]], rotation);
-    return [pole, rightArm, rightHead, leftArm, leftHead].join(" ");
-  }
-
-  return [pole, rightArm, rightHead].join(" ");
 };
 
 const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
@@ -233,6 +191,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     setSelectedLamppostId(null);
   };
 
+  const blockMapInteraction = (e: React.MouseEvent<HTMLButtonElement | HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
+    setActiveTool("select");
+  };
+
   if (!isLoaded) {
     return <div className="h-96 bg-muted animate-pulse rounded-lg" />;
   }
@@ -369,6 +334,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
               draggable
               onDragEnd={(e) => {
                 if (e.latLng) {
+                  suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
                   onChange({
                     ...value,
                     lampposts: (value.lampposts || []).map((l) =>
@@ -377,16 +343,9 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                   });
                 }
               }}
-              icon={{
-                path: getLamppostPath(lp.type, lp.rotation || 0),
-                fillColor: "#f59e0b",
-                fillOpacity: 1,
-                strokeColor: selectedLamppostId === lp.id ? "#475569" : "#f59e0b",
-                strokeWeight: selectedLamppostId === lp.id ? 3 : 2.5,
-                scale: selectedLamppostId === lp.id ? 1.45 : 1.2,
-                anchor: new google.maps.Point(0, 0),
-              }}
+              icon={getLamppostIconOptions({ type: lp.type, rotation: lp.rotation || 0, selected: selectedLamppostId === lp.id })}
               onClick={() => {
+                suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
                 setSelectedLamppostId(selectedLamppostId === lp.id ? null : lp.id);
                 setActiveTool("select");
               }}
@@ -405,7 +364,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
                   fillOpacity: 0,
-                  strokeColor: "#475569",
+                  strokeColor: LAMPPOST_SELECTION_STROKE,
                   strokeOpacity: 1,
                   strokeWeight: 2,
                   scale: 24,
@@ -419,36 +378,6 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             <MarkerF position={value.location} />
           )}
         </GoogleMap>
-
-        {selectedLamppostId && (() => {
-          const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
-          if (!lp) return null;
-          return (
-            <div className="absolute bottom-3 right-3 z-20 flex items-center gap-2 rounded-xl border border-border bg-background/95 p-2 shadow-lg backdrop-blur-sm">
-              <button
-                type="button"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors"
-                onClick={() => rotateLamppost(lp.id, -15)}
-              >
-                <RotateCcw className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border bg-card hover:bg-accent transition-colors"
-                onClick={() => rotateLamppost(lp.id, 15)}
-              >
-                <RotateCw className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="h-10 w-10 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-                onClick={() => deleteLamppost(lp.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
-          );
-        })()}
 
         {/* Zoom controls */}
         <div className="absolute top-2 right-2 flex flex-col gap-1">
@@ -477,6 +406,25 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
           </Button>
         )}
       </div>
+
+      {selectedLamppostId && (() => {
+        const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
+        if (!lp) return null;
+        return (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-sm" onMouseDown={blockMapInteraction} onClick={blockMapInteraction}>
+            <span className="text-sm text-muted-foreground">{l("Orientation", "Orientation")}: {lp.rotation || 0}°</span>
+            <Button type="button" size="sm" variant="outline" onClick={(e) => { blockMapInteraction(e); rotateLamppost(lp.id, -15); }}>
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={(e) => { blockMapInteraction(e); rotateLamppost(lp.id, 15); }}>
+              <RotateCw className="h-4 w-4" />
+            </Button>
+            <Button type="button" size="sm" variant="destructive" onClick={(e) => { blockMapInteraction(e); deleteLamppost(lp.id); }}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      })()}
 
       {/* Zone List */}
       {value.areas.length > 0 && (
