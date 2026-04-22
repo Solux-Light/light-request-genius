@@ -35,9 +35,10 @@ interface Props {
 }
 
 const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang = "en" }: Props) => {
+  const initialSegmentsRef = useRef<LightingSegment[]>(cloneSegments(valueSegments));
   const [nightHours, setNightHours] = useState(valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS);
-  const [segments, setSegments] = useState<LightingSegment[]>(() => cloneSegments(valueSegments));
-  const [selectedId, setSelectedId] = useState(() => cloneSegments(valueSegments)[0].id);
+  const [segments, setSegments] = useState<LightingSegment[]>(initialSegmentsRef.current);
+  const [selectedId, setSelectedId] = useState(initialSegmentsRef.current[0].id);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 

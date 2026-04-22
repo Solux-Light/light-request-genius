@@ -21,7 +21,7 @@ import RoadLightingLayout from "@/components/RoadLightingLayout";
 import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS } from "@/types/solux";
+import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData } from "@/types/solux";
 
 const GOOGLE_MAPS_API_KEY = "AIzaSyCaw49wSxMDCYw7-0WkxX3Bu_AcRrja6pU";
 
@@ -92,6 +92,82 @@ const SoluxIntake = () => {
     ...form.areas.map((a) => ({ ...a, source: "Map" })),
     ...form.pdfPlan.zones.map((z) => ({ id: z.id, name: z.name, color: z.color, source: "PDF", type: "polygon" as const, paths: [] })),
   ];
+  const zoneOptions = useMemo(() => allZones.map((zone) => ({
+    id: zone.id,
+    name: zone.name || `${l("Zone", "Zone")} ${zone.id.slice(0, 6)}`,
+    color: zone.color,
+    source: zone.source,
+  })), [allZones, l]);
+  const selectedZoneOption = zoneOptions.find((zone) => zone.id === form.assignedArea);
+
+  const syncAssignedZoneData = useCallback((updates: Partial<Pick<SoluxForm, "avgLux" | "uniformity" | "minLux" | "cct" | "lightingSegments" | "lightingNightHours">>) => {
+    setForm((current) => {
+      const nextLightingSegments = updates.lightingSegments?.map((segment) => ({ ...segment }));
+      const nextForm: SoluxForm = {
+        ...current,
+        ...updates,
+        ...(nextLightingSegments ? { lightingSegments: nextLightingSegments } : {}),
+      };
+
+      if (!current.assignedArea) return nextForm;
+
+      const existingZoneData = current.zoneLightingData[current.assignedArea] ?? createDefaultZoneLightingData();
+
+      return {
+        ...nextForm,
+        zoneLightingData: {
+          ...current.zoneLightingData,
+          [current.assignedArea]: {
+            ...existingZoneData,
+            ...updates,
+            ...(nextLightingSegments ? { lightingSegments: nextLightingSegments } : {}),
+          },
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    setForm((current) => {
+      const validZoneIds = new Set(allZones.map((zone) => zone.id));
+      const nextZoneLightingData = { ...current.zoneLightingData };
+      let changed = false;
+
+      allZones.forEach((zone) => {
+        if (!nextZoneLightingData[zone.id]) {
+          nextZoneLightingData[zone.id] = createDefaultZoneLightingData();
+          changed = true;
+        }
+      });
+
+      Object.keys(nextZoneLightingData).forEach((zoneId) => {
+        if (!validZoneIds.has(zoneId)) {
+          delete nextZoneLightingData[zoneId];
+          changed = true;
+        }
+      });
+
+      const fallbackZoneId = current.assignedArea && validZoneIds.has(current.assignedArea)
+        ? current.assignedArea
+        : allZones[0]?.id || "";
+
+      if (!changed && fallbackZoneId === current.assignedArea) return current;
+
+      const zoneData = fallbackZoneId ? nextZoneLightingData[fallbackZoneId] ?? createDefaultZoneLightingData() : createDefaultZoneLightingData();
+
+      return {
+        ...current,
+        assignedArea: fallbackZoneId,
+        avgLux: zoneData.avgLux,
+        uniformity: zoneData.uniformity,
+        minLux: zoneData.minLux,
+        cct: zoneData.cct,
+        lightingSegments: zoneData.lightingSegments.map((segment) => ({ ...segment })),
+        lightingNightHours: zoneData.lightingNightHours,
+        zoneLightingData: nextZoneLightingData,
+      };
+    });
+  }, [allZones]);
 
   // Unique road segment types
   const uniqueSegmentTypes = [...new Set(form.roadProfile.map((s) => s.type))];
@@ -253,37 +329,25 @@ const SoluxIntake = () => {
                       <h2 className="text-xl font-semibold mb-4">{l("Zone d'étude assignée", "Assigned Study Area")}</h2>
                       {allZones.length > 0 ? (
                         <Select value={form.assignedArea} onValueChange={(v) => {
-                          // Save current zone's lighting data before switching
-                          if (form.assignedArea) {
-                            const currentData = {
-                              avgLux: form.avgLux,
-                              uniformity: form.uniformity,
-                              minLux: form.minLux,
-                              cct: form.cct,
-                            };
-                            setForm((f) => ({
-                              ...f,
-                              zoneLightingData: { ...f.zoneLightingData, [f.assignedArea]: currentData },
-                            }));
-                          }
-                          // Load new zone's lighting data (or reset to empty)
-                          const saved = form.zoneLightingData[v];
-                          setForm((f) => ({
-                            ...f,
+                          const saved = form.zoneLightingData[v] ?? createDefaultZoneLightingData();
+                          setForm((current) => ({
+                            ...current,
                             assignedArea: v,
-                            avgLux: saved?.avgLux || "",
-                            uniformity: saved?.uniformity || "",
-                            minLux: saved?.minLux || "",
-                            cct: saved?.cct || "4000K",
+                            avgLux: saved.avgLux,
+                            uniformity: saved.uniformity,
+                            minLux: saved.minLux,
+                            cct: saved.cct,
+                            lightingSegments: saved.lightingSegments.map((segment) => ({ ...segment })),
+                            lightingNightHours: saved.lightingNightHours,
                           }));
                         }}>
                           <SelectTrigger><SelectValue placeholder={l("Sélectionner une zone", "Select a zone")} /></SelectTrigger>
                           <SelectContent>
-                            {allZones.map((z) => (
-                              <SelectItem key={z.id} value={z.name || z.id}>
+                            {zoneOptions.map((z) => (
+                              <SelectItem key={z.id} value={z.id}>
                                 <span className="flex items-center gap-2">
                                   <span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: z.color }} />
-                                  {z.name || z.id}
+                                  {z.name}
                                   <span className="text-xs text-muted-foreground">({z.source})</span>
                                 </span>
                               </SelectItem>
@@ -303,19 +367,19 @@ const SoluxIntake = () => {
                       <div className="grid md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>{l("Lux moyen minimum *", "Required Average Illuminance (lux) *")}</Label>
-                          <Input value={form.avgLux} onChange={(e) => onChange("avgLux", e.target.value)} placeholder="15" required />
+                          <Input value={form.avgLux} onChange={(e) => syncAssignedZoneData({ avgLux: e.target.value })} placeholder="15" required />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("Uniformité minimale (optionnel)", "Minimum Uniformity Ratio (optional)")}</Label>
-                          <Input value={form.uniformity} onChange={(e) => onChange("uniformity", e.target.value)} placeholder="0.6" />
+                          <Input value={form.uniformity} onChange={(e) => syncAssignedZoneData({ uniformity: e.target.value })} placeholder="0.6" />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("Lux minimum (optionnel)", "Minimum Lux (optional)")}</Label>
-                          <Input value={form.minLux} onChange={(e) => onChange("minLux", e.target.value)} placeholder="4" />
+                          <Input value={form.minLux} onChange={(e) => syncAssignedZoneData({ minLux: e.target.value })} placeholder="4" />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
-                          <Select value={form.cct} onValueChange={(v) => onChange("cct", v)}>
+                          <Select value={form.cct} onValueChange={(v) => syncAssignedZoneData({ cct: v })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="3000K">3000K</SelectItem>
@@ -466,10 +530,16 @@ const SoluxIntake = () => {
                   <p className="text-sm text-muted-foreground mb-4">
                     {l("Configurez le programme d'éclairage nocturne.", "Configure the nighttime lighting program using the timeline editor.")}
                   </p>
+                  {selectedZoneOption && (
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {l("Scénario appliqué à la zone sélectionnée :", "Scenario applied to selected zone:")} <span className="font-medium text-foreground">{selectedZoneOption.name}</span>
+                    </p>
+                  )}
                   <LightingScenarioEditor
+                    valueSegments={form.lightingSegments}
+                    valueNightHours={form.lightingNightHours}
                     onChange={(segments, nightHours) => {
-                      onChange("lightingSegments", segments);
-                      onChange("lightingNightHours", nightHours);
+                      syncAssignedZoneData({ lightingSegments: segments, lightingNightHours: nightHours });
                     }}
                     lang={lang}
                   />
