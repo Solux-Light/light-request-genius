@@ -521,29 +521,34 @@ const SoluxIntake = () => {
                   <p className="text-sm text-muted-foreground mb-4">
                     {l("Choisissez le produit Solux adapté.", "Choose the appropriate Solux product.")}
                   </p>
+                  {form.projectType === "zone" && selectedZoneOption && (
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {l("Produit appliqué à la zone sélectionnée :", "Product applied to selected zone:")} <span className="font-medium text-foreground">{selectedZoneOption.name}</span>
+                    </p>
+                  )}
                   <ProductSelectionSection
                     product={form.product}
-                    onProductChange={(v) => onChange("product", v)}
+                    onProductChange={(v) => syncAssignedZoneData({ product: v })}
                     luminaireHeight={form.luminaireHeight}
-                    onLuminaireHeightChange={(v) => onChange("luminaireHeight", v)}
+                    onLuminaireHeightChange={(v) => syncAssignedZoneData({ luminaireHeight: v })}
                     spacing={form.spacing}
-                    onSpacingChange={(v) => onChange("spacing", v)}
+                    onSpacingChange={(v) => syncAssignedZoneData({ spacing: v })}
                     optimizeHeight={form.optimizeHeight}
-                    onOptimizeHeightChange={(v) => onChange("optimizeHeight", v)}
+                    onOptimizeHeightChange={(v) => syncAssignedZoneData({ optimizeHeight: v })}
                     optimizeSpacing={form.optimizeSpacing}
-                    onOptimizeSpacingChange={(v) => onChange("optimizeSpacing", v)}
+                    onOptimizeSpacingChange={(v) => syncAssignedZoneData({ optimizeSpacing: v })}
                     batteryChoice={form.batteryChoice}
-                    onBatteryChoiceChange={(v) => onChange("batteryChoice", v)}
+                    onBatteryChoiceChange={(v) => syncAssignedZoneData({ batteryChoice: v })}
                     batteryWh={form.batteryWh}
-                    onBatteryWhChange={(v) => onChange("batteryWh", v)}
+                    onBatteryWhChange={(v) => syncAssignedZoneData({ batteryWh: v })}
                     panelChoice={form.panelChoice}
-                    onPanelChoiceChange={(v) => onChange("panelChoice", v)}
+                    onPanelChoiceChange={(v) => syncAssignedZoneData({ panelChoice: v })}
                     panelWp={form.panelWp}
-                    onPanelWpChange={(v) => onChange("panelWp", v)}
+                    onPanelWpChange={(v) => syncAssignedZoneData({ panelWp: v })}
                     alternativeAccepted={form.alternativeAccepted}
-                    onAlternativeAcceptedChange={(v) => onChange("alternativeAccepted", v)}
+                    onAlternativeAcceptedChange={(v) => syncAssignedZoneData({ alternativeAccepted: v })}
                     alternativeDetails={form.alternativeDetails}
-                    onAlternativeDetailsChange={(v) => onChange("alternativeDetails", v)}
+                    onAlternativeDetailsChange={(v) => syncAssignedZoneData({ alternativeDetails: v })}
                     hideMultiToggle
                     lang={lang}
                   />
