@@ -355,6 +355,17 @@ const SoluxIntake = () => {
                             cct: saved.cct,
                             lightingSegments: saved.lightingSegments.map((segment) => ({ ...segment })),
                             lightingNightHours: saved.lightingNightHours,
+                            product: saved.product,
+                            luminaireHeight: saved.luminaireHeight,
+                            spacing: saved.spacing,
+                            optimizeHeight: saved.optimizeHeight,
+                            optimizeSpacing: saved.optimizeSpacing,
+                            batteryChoice: saved.batteryChoice,
+                            batteryWh: saved.batteryWh,
+                            panelChoice: saved.panelChoice,
+                            panelWp: saved.panelWp,
+                            alternativeAccepted: saved.alternativeAccepted,
+                            alternativeDetails: saved.alternativeDetails,
                           }));
                         }}>
                           <SelectTrigger><SelectValue placeholder={l("Sélectionner une zone", "Select a zone")} /></SelectTrigger>
