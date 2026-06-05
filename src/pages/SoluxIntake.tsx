@@ -22,6 +22,7 @@ import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
 import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData } from "@/types/solux";
+import { saveSubmission } from "@/lib/submissions";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -53,6 +54,7 @@ const SoluxIntake = () => {
   const [lang, setLang] = useState<"fr" | "en">("en");
   const [form, setForm] = useState<SoluxForm>({ ...defaultForm });
   const [files, setFiles] = useState<File[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const directExportRef = useRef<HTMLDivElement>(null);
 
   const l = useCallback((fr: string, en: string) => (lang === "fr" ? fr : en), [lang]);
@@ -124,7 +126,7 @@ const SoluxIntake = () => {
     return errs;
   }, [form, l]);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (requiredErrors.length > 0) {
       toast({
@@ -134,10 +136,22 @@ const SoluxIntake = () => {
       });
       return;
     }
-    toast({
-      title: l("Soumission réussie", "Request Submitted"),
-      description: l("(Démo visuelle — aucune donnée envoyée)", "(Demo Mode — No data will be transmitted)"),
-    });
+    setSubmitting(true);
+    try {
+      await saveSubmission(form, { salesName });
+      toast({
+        title: l("Demande enregistrée", "Request Saved"),
+        description: l("Votre demande a été transmise au bureau d'études.", "Your request has been sent to the design team."),
+      });
+    } catch (err) {
+      toast({
+        title: l("Échec de l'envoi", "Submission Failed"),
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Combine zones from map and PDF (memoized — new array each render caused effect loops)
@@ -770,9 +784,9 @@ const SoluxIntake = () => {
                 {/* Section 9: Footer Actions */}
                 <section>
                   <div className="flex items-center gap-3 pt-2 border-t">
-                    <Button type="submit" size="lg" className="px-8">
+                    <Button type="submit" size="lg" className="px-8" disabled={submitting}>
                       <Send className="h-4 w-4 mr-2" />
-                      {l("Envoyer au bureau d'études", "Submit to Design Team")}
+                      {submitting ? l("Envoi…", "Sending…") : l("Envoyer au bureau d'études", "Submit to Design Team")}
                     </Button>
                     <PdfExportButton
                       contentRef={directExportRef}
@@ -788,7 +802,7 @@ const SoluxIntake = () => {
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {l("(Démo visuelle — aucune donnée envoyée)", "(Demo Mode — No data will be transmitted)")}
+                    {l("Votre demande sera enregistrée et transmise au bureau d'études.", "Your request will be saved and sent to the design team.")}
                   </p>
                 </section>
               </form>
