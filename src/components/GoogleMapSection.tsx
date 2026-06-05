@@ -123,19 +123,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
     map.setMapTypeId(mapType);
-    // Google Maps can paint a blank/grey canvas when it initialises inside the
-    // page's fade-in animation (opacity/transform create a compositing layer).
-    // Once the animation has settled, force a redraw so the tiles appear without
-    // needing a manual pan/zoom first. Re-applying the CURRENT center avoids
-    // snapping back if the user has already moved the map.
-    window.setTimeout(() => {
-      const m = mapRef.current;
-      if (!m) return;
-      google.maps.event.trigger(m, "resize");
-      const center = m.getCenter();
-      if (center) m.setCenter(center);
-    }, 450);
-  }, [mapType]);
+    // GoogleMap from @react-google-maps/api does NOT honour defaultCenter/defaultZoom,
+    // so without this the map starts with no viewport and paints a grey canvas until
+    // the first pan. Set the initial view explicitly here (uncontrolled: we don't pass
+    // center/zoom props, which would fight the user's panning).
+    map.setCenter(defaultCenter);
+    map.setZoom(defaultZoom);
+  }, [mapType, defaultCenter, defaultZoom]);
 
   const debouncedMapViewChange = useMemo(() => {
     if (!onMapViewChange) return null;
@@ -391,8 +385,6 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       <div className="relative rounded-lg border border-border">
         <GoogleMap
           mapContainerStyle={MAP_CONTAINER_STYLE}
-          defaultCenter={defaultCenter}
-          defaultZoom={defaultZoom}
           onLoad={onMapLoad}
           onIdle={onMapIdle}
           onClick={handleMapClick}
