@@ -23,7 +23,7 @@ import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
 import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData } from "@/types/solux";
 
-const GOOGLE_MAPS_API_KEY = "AIzaSyCaw49wSxMDCYw7-0WkxX3Bu_AcRrja6pU";
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 const SoluxIntake = () => {
   const { user, signOut } = useAuth();
