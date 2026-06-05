@@ -42,6 +42,37 @@ const SoluxIntake = () => {
     setForm((f) => ({ ...f, [key]: val }));
   }, []);
 
+  const handleMapSectionChange = useCallback(
+    (val: {
+      address: string;
+      location?: { lat: number; lng: number } | null;
+      areas: SoluxForm["areas"];
+      lampposts: SoluxForm["lampposts"];
+    }) => {
+      setForm((f) => ({
+        ...f,
+        address: val.address,
+        ...(val.location !== undefined ? { location: val.location } : {}),
+        areas: val.areas,
+        lampposts: val.lampposts,
+      }));
+    },
+    []
+  );
+
+  const handleMapViewChange = useCallback((zoom: number, center: { lat: number; lng: number }) => {
+    setForm((f) => {
+      if (
+        f.mapZoom === zoom &&
+        f.mapCenter?.lat === center.lat &&
+        f.mapCenter?.lng === center.lng
+      ) {
+        return f;
+      }
+      return { ...f, mapZoom: zoom, mapCenter: center };
+    });
+  }, []);
+
   // SEO effects
   useEffect(() => {
     document.title = l(
@@ -87,11 +118,21 @@ const SoluxIntake = () => {
     });
   };
 
-  // Combine zones from map and PDF
-  const allZones = [
-    ...form.areas.map((a) => ({ ...a, source: "Map" })),
-    ...form.pdfPlan.zones.map((z) => ({ id: z.id, name: z.name, color: z.color, source: "PDF", type: "polygon" as const, paths: [] })),
-  ];
+  // Combine zones from map and PDF (memoized — new array each render caused effect loops)
+  const allZones = useMemo(
+    () => [
+      ...form.areas.map((a) => ({ ...a, source: "Map" as const })),
+      ...form.pdfPlan.zones.map((z) => ({
+        id: z.id,
+        name: z.name,
+        color: z.color,
+        source: "PDF" as const,
+        type: "polygon" as const,
+        paths: [] as { lat: number; lng: number }[],
+      })),
+    ],
+    [form.areas, form.pdfPlan.zones]
+  );
   const zoneOptions = useMemo(() => allZones.map((zone) => ({
     id: zone.id,
     name: zone.name || `${l("Zone", "Zone")} ${zone.id.slice(0, 6)}`,
@@ -131,6 +172,13 @@ const SoluxIntake = () => {
       };
     });
   }, []);
+
+  const handleLightingScenarioChange = useCallback(
+    (segments: SoluxForm["lightingSegments"], nightHours: number) => {
+      syncAssignedZoneData({ lightingSegments: segments, lightingNightHours: nightHours });
+    },
+    [syncAssignedZoneData]
+  );
 
   useEffect(() => {
     setForm((current) => {
@@ -318,16 +366,8 @@ const SoluxIntake = () => {
                               areas: form.areas,
                               lampposts: form.lampposts,
                             }}
-                            onChange={(val) => {
-                              onChange("address", val.address);
-                              if (val.location) onChange("location", val.location);
-                              onChange("areas", val.areas);
-                              onChange("lampposts", val.lampposts);
-                            }}
-                            onMapViewChange={(zoom, center) => {
-                              onChange("mapZoom", zoom);
-                              onChange("mapCenter", center);
-                            }}
+                            onChange={handleMapSectionChange}
+                            onMapViewChange={handleMapViewChange}
                             lang={lang}
                           />
                         </TabsContent>
@@ -570,9 +610,7 @@ const SoluxIntake = () => {
                   <LightingScenarioEditor
                     valueSegments={form.lightingSegments}
                     valueNightHours={form.lightingNightHours}
-                    onChange={(segments, nightHours) => {
-                      syncAssignedZoneData({ lightingSegments: segments, lightingNightHours: nightHours });
-                    }}
+                    onChange={handleLightingScenarioChange}
                     lang={lang}
                   />
                 </section>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { DEFAULT_LIGHTING_NIGHT_HOURS, LightingSegment, createDefaultLightingSegments } from "@/types/solux";
@@ -27,6 +27,16 @@ const segTextColor = (seg: LightingSegment) => {
   return "#111";
 };
 
+const normalise = (segs: LightingSegment[], total: number): LightingSegment[] => {
+  const sum = segs.reduce((s, seg) => s + seg.hours, 0);
+  if (sum === 0) return segs;
+  const scaled = segs.map((seg) => ({ ...seg, hours: snap30(round2((seg.hours / sum) * total)) }));
+  const newSum = scaled.reduce((s, seg) => s + seg.hours, 0);
+  const diff = round2(total - newSum);
+  if (diff !== 0) scaled[scaled.length - 1].hours = Math.max(0.5, round2(scaled[scaled.length - 1].hours + diff));
+  return scaled;
+};
+
 interface Props {
   valueSegments?: LightingSegment[];
   valueNightHours?: number;
@@ -35,46 +45,48 @@ interface Props {
 }
 
 const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang = "en" }: Props) => {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   const initialSegmentsRef = useRef<LightingSegment[]>(cloneSegments(valueSegments));
   const [nightHours, setNightHours] = useState(valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS);
   const [segments, setSegments] = useState<LightingSegment[]>(initialSegmentsRef.current);
   const [selectedId, setSelectedId] = useState(initialSegmentsRef.current[0].id);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const selected = segments.find((s) => s.id === selectedId) || segments[0];
 
+  const notifyParent = useCallback((nextSegments: LightingSegment[], nextNightHours: number) => {
+    onChangeRef.current(nextSegments.map((segment) => ({ ...segment })), nextNightHours);
+  }, []);
+
+  const applyScenario = useCallback(
+    (nextSegments: LightingSegment[], nextNightHours: number = nightHours) => {
+      const normalized = normalise(nextSegments, nextNightHours);
+      setNightHours(nextNightHours);
+      setSegments(normalized);
+      notifyParent(normalized, nextNightHours);
+    },
+    [nightHours, notifyParent]
+  );
+
   useEffect(() => {
     const nextSegments = cloneSegments(valueSegments);
+    const nextNightHours = valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS;
     setSegments(nextSegments);
-    setSelectedId((current) => nextSegments.some((segment) => segment.id === current) ? current : nextSegments[0].id);
-  }, [valueSegments]);
-
-  useEffect(() => {
-    setNightHours(valueNightHours ?? DEFAULT_LIGHTING_NIGHT_HOURS);
-  }, [valueNightHours]);
-
-  useEffect(() => {
-    onChange(segments.map((segment) => ({ ...segment })), nightHours);
-  }, [segments, nightHours, onChange]);
-
-  const normalise = (segs: LightingSegment[], total: number): LightingSegment[] => {
-    const sum = segs.reduce((s, seg) => s + seg.hours, 0);
-    if (sum === 0) return segs;
-    const scaled = segs.map((seg) => ({ ...seg, hours: snap30(round2((seg.hours / sum) * total)) }));
-    // Fix rounding
-    const newSum = scaled.reduce((s, seg) => s + seg.hours, 0);
-    const diff = round2(total - newSum);
-    if (diff !== 0) scaled[scaled.length - 1].hours = Math.max(0.5, round2(scaled[scaled.length - 1].hours + diff));
-    return scaled;
-  };
+    setNightHours(nextNightHours);
+    setSelectedId((current) =>
+      nextSegments.some((segment) => segment.id === current) ? current : nextSegments[0].id
+    );
+  }, [valueSegments, valueNightHours]);
 
   const handleNightHoursChange = (val: number[]) => {
-    const nh = val[0];
-    setNightHours(nh);
-    setSegments((prev) => normalise(prev, nh));
+    applyScenario(segments, val[0]);
   };
 
   const addSegment = () => {
@@ -82,21 +94,20 @@ const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang
     const newSeg = mkSensor(1, 30, 100);
     const next = [...segments];
     next.splice(idx + 1, 0, newSeg);
-    setSegments(normalise(next, nightHours));
+    applyScenario(next, nightHours);
     setSelectedId(newSeg.id);
   };
 
   const removeSegment = () => {
     if (segments.length <= 1) return;
     const next = segments.filter((s) => s.id !== selectedId);
-    setSegments(normalise(next, nightHours));
+    applyScenario(next, nightHours);
     setSelectedId(next[0].id);
   };
 
-  const updateSelected = (field: string, value: any) => {
-    setSegments((prev) =>
-      prev.map((s) => (s.id === selectedId ? { ...s, [field]: value } : s))
-    );
+  const updateSelected = (field: string, value: unknown) => {
+    const next = segments.map((s) => (s.id === selectedId ? { ...s, [field]: value } : s));
+    applyScenario(next, nightHours);
   };
 
   const handleDurationChange = (val: number[]) => {
@@ -112,7 +123,7 @@ const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang
       if (i === neighborIdx) return { ...s, hours: neighborNew };
       return s;
     });
-    setSegments(normalise(next, nightHours));
+    applyScenario(next, nightHours);
   };
 
   // Timeline bar drag
@@ -137,17 +148,21 @@ const LightingScenarioEditor = ({ valueSegments, valueNightHours, onChange, lang
       if (newLeft >= 0.5 && newRight >= 0.5) {
         next[dragIdx] = { ...next[dragIdx], hours: newLeft };
         next[dragIdx + 1] = { ...next[dragIdx + 1], hours: newRight };
+        segmentsRef.current = next;
         setSegments(next);
       }
     };
-    const handleUp = () => setDragIdx(null);
+    const handleUp = () => {
+      setDragIdx(null);
+      notifyParent(segmentsRef.current, nightHours);
+    };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [dragIdx, segments, nightHours]);
+  }, [dragIdx, segments, nightHours, notifyParent]);
 
   const styles = {
     card: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 } as React.CSSProperties,
