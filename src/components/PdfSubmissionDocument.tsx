@@ -33,6 +33,12 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
       return t ? (lang === "fr" ? t.labelFr : t.labelEn) : type;
     };
 
+    // Resolve a zone id to its human name (map areas + PDF zones), so the PDF
+    // shows "Parking nord" instead of a raw UUID.
+    const zoneNameById: Record<string, string> = {};
+    form.areas.forEach((a) => { zoneNameById[a.id] = a.name || `Zone ${a.id.slice(0, 6)}`; });
+    form.pdfPlan.zones.forEach((z) => { zoneNameById[z.id] = z.name || `Zone ${z.id.slice(0, 6)}`; });
+
     return (
       <div ref={ref} style={{ width: 794, fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, padding: 40, backgroundColor: "#fff", color: "#111" }}>
         {/* Header */}
@@ -110,7 +116,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             </h2>
             {Object.keys(form.zoneLightingData).length > 0 ? Object.entries(form.zoneLightingData).map(([zoneId, zoneData]) => (
               <div key={zoneId} style={{ marginBottom: 12, padding: 8, border: "1px solid #e5e7eb", borderRadius: 4 }}>
-                <p style={{ fontWeight: 700, marginBottom: 6 }}>{zoneId}</p>
+                <p style={{ fontWeight: 700, marginBottom: 6 }}>{zoneNameById[zoneId] || zoneId}</p>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <tbody>
                     {[
@@ -119,6 +125,12 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                       [l("Lux minimum", "Min Lux"), zoneData.minLux || "—"],
                       ["CCT", zoneData.cct || "—"],
                       [l("Durée de nuit", "Night Duration"), `${zoneData.lightingNightHours}h`],
+                      [l("Produit", "Product"), PRODUCT_LABELS[zoneData.product] || zoneData.product || "—"],
+                      [l("Hauteur luminaire", "Luminaire Height"), zoneData.luminaireHeight ? `${zoneData.luminaireHeight}m` : "—"],
+                      [l("Espacement", "Spacing"), zoneData.spacing ? `${zoneData.spacing}m` : "—"],
+                      [l("Batterie", "Battery"), zoneData.batteryChoice === "custom" ? `Custom: ${zoneData.batteryWh}Wh` : "Standard"],
+                      [l("Panneau", "Panel"), zoneData.panelChoice === "custom" ? `Custom: ${zoneData.panelWp}Wp` : "Standard"],
+                      [l("Alternative", "Alternative"), zoneData.alternativeAccepted ? (zoneData.alternativeDetails || l("Oui", "Yes")) : l("Non", "No")],
                     ].map(([label, val], i) => (
                       <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
@@ -195,15 +207,49 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
               <tbody>
                 {[
                   [l("Disposition", "Arrangement"), form.roadLighting.arrangement],
+                  [l("Luminaire", "Luminaire"), PRODUCT_LABELS[form.roadLighting.luminaire] || form.roadLighting.luminaire || "—"],
                   [l("Hauteur du mât", "Pole Height"), `${form.roadLighting.pole_height}m`],
                   [l("Longueur du bras", "Arm Length"), `${form.roadLighting.arm_length}m`],
                   [l("Espacement", "Spacing"), `${form.roadLighting.spacing}m`],
                   [l("Inclinaison", "Tilt"), `${form.roadLighting.tilt}°`],
                   [l("Orientation", "Orientation"), form.roadLighting.orientation],
+                  [l("Puissance", "Power"), form.roadLighting.power_mode === "manual" ? `${form.roadLighting.power_w || "—"}W` : "Auto"],
+                  [l("Optimisations", "Optimizations"), [
+                    form.roadLighting.optimize_pole_height && l("hauteur", "pole height"),
+                    form.roadLighting.optimize_arm_length && l("bras", "arm"),
+                    form.roadLighting.optimize_spacing && l("espacement", "spacing"),
+                  ].filter(Boolean).join(", ") || l("Aucune", "None")],
                 ].map(([label, val], i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
                     <td style={{ padding: "4px 8px" }}>{val}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {/* Per-Segment Lighting Levels (road) */}
+        {form.projectType === "road" && Object.keys(form.roadSegmentLighting).length > 0 && (
+          <section style={{ marginBottom: 20 }}>
+            <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
+              {l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}
+            </h2>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                <tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                  {[l("Segment", "Segment"), l("Lux moyen", "Avg Lux"), l("Uniformité", "Uniformity"), l("Lux min", "Min Lux"), "CCT"].map((h, i) => (
+                    <td key={i} style={{ padding: "4px 8px", fontWeight: 700 }}>{h}</td>
+                  ))}
+                </tr>
+                {Object.entries(form.roadSegmentLighting).map(([type, lvl]) => (
+                  <tr key={type} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "4px 8px", fontWeight: 600 }}>{getSegLabel(type)}</td>
+                    <td style={{ padding: "4px 8px" }}>{lvl.avgLux || "—"}</td>
+                    <td style={{ padding: "4px 8px" }}>{lvl.uniformity || "—"}</td>
+                    <td style={{ padding: "4px 8px" }}>{lvl.minLux || "—"}</td>
+                    <td style={{ padding: "4px 8px" }}>{lvl.cct || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -274,10 +320,14 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             </h2>
             {form.productAssignments.map((a, i) => (
               <div key={a.id} style={{ marginBottom: 8, padding: 8, border: "1px solid #e5e7eb", borderRadius: 4 }}>
-                <p><strong>{a.zone || `Zone ${i + 1}`}</strong> → {a.product}</p>
-                {a.avgLux && <p>Avg Lux: {a.avgLux}</p>}
-                {a.uniformity && <p>Uniformity: {a.uniformity}</p>}
-                {a.cct && <p>CCT: {a.cct}K</p>}
+                <p><strong>{a.zone || `Zone ${i + 1}`}</strong> → {PRODUCT_LABELS[a.product] || a.product}</p>
+                {a.avgLux && <p>{l("Lux moyen", "Avg Lux")}: {a.avgLux}</p>}
+                {a.uniformity && <p>{l("Uniformité", "Uniformity")}: {a.uniformity}</p>}
+                {a.minLux && <p>{l("Lux min", "Min Lux")}: {a.minLux}</p>}
+                {a.cct && <p>CCT: {String(a.cct).replace(/k$/i, "")}K</p>}
+                {(a.luminaireHeight || a.spacing) && <p>{l("Hauteur", "Height")}: {a.luminaireHeight || "—"}m · {l("Espacement", "Spacing")}: {a.spacing || "—"}m</p>}
+                {a.presenceDetection && <p>{l("Détection de présence", "Presence Detection")}: {l("Oui", "Yes")}{a.detectionCount ? ` (${a.detectionCount}${a.detectionDuration ? `, ${a.detectionDuration}` : ""})` : ""}</p>}
+                {a.scenarioText && <p>{l("Scénario", "Scenario")}: {a.scenarioText}</p>}
               </div>
             ))}
           </section>

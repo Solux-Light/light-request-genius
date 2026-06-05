@@ -37,16 +37,18 @@ describe("PdfSubmissionDocument", () => {
       product: "SSLXPRO",
       avgLux: "20",
       cct: "4000K",
+      areas: [{ id: "zone-1", type: "polygon", paths: [], color: "#2563eb", name: "Parking Nord" }],
       assignedArea: "zone-1",
       zoneLightingData: {
-        "zone-1": { ...createDefaultZoneLightingData(), avgLux: "20", cct: "4000K" },
+        "zone-1": { ...createDefaultZoneLightingData(), avgLux: "20", cct: "4000K", product: "SSLXPRO" },
       },
     };
     const out = text(form);
     expect(out).toContain("LIGHTING STUDY REQUEST");
     expect(out).toContain("Test Project");
     expect(out).toContain("ACME Corp");
-    expect(out).toContain("SOLUX PRO"); // PRODUCT_LABELS[SSLXPRO]
+    expect(out).toContain("Parking Nord"); // zone name, not the raw UUID (Phase 1)
+    expect(out).toContain("SOLUX PRO"); // per-zone product (Phase 1)
     expect(out).toContain("20"); // avgLux
   });
 
