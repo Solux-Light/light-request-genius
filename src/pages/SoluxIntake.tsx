@@ -21,9 +21,31 @@ import RoadLightingLayout from "@/components/RoadLightingLayout";
 import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData } from "@/types/solux";
+import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData } from "@/types/solux";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+// Snapshot the top-level "mirror" lighting fields into a ZoneLightingData object.
+// Used to seed the first zone with values the user typed before any zone existed.
+const mirrorToZoneData = (f: SoluxForm): ZoneLightingData => ({
+  avgLux: f.avgLux,
+  uniformity: f.uniformity,
+  minLux: f.minLux,
+  cct: f.cct,
+  lightingSegments: f.lightingSegments.map((s) => ({ ...s })),
+  lightingNightHours: f.lightingNightHours,
+  product: f.product,
+  luminaireHeight: f.luminaireHeight,
+  spacing: f.spacing,
+  optimizeHeight: f.optimizeHeight,
+  optimizeSpacing: f.optimizeSpacing,
+  batteryChoice: f.batteryChoice,
+  batteryWh: f.batteryWh,
+  panelChoice: f.panelChoice,
+  panelWp: f.panelWp,
+  alternativeAccepted: f.alternativeAccepted,
+  alternativeDetails: f.alternativeDetails,
+});
 
 const SoluxIntake = () => {
   const { user, signOut } = useAuth();
@@ -186,9 +208,19 @@ const SoluxIntake = () => {
       const nextZoneLightingData = { ...current.zoneLightingData };
       let changed = false;
 
+      // If lighting fields were filled before any zone existed, those values live
+      // only in the top-level mirror. Seed the first newly-created zone with them
+      // so creating a zone doesn't wipe what the user just typed.
+      const seedFromMirror =
+        !current.assignedArea && Object.keys(current.zoneLightingData).length === 0;
+      const firstNewZoneId = allZones[0]?.id;
+
       allZones.forEach((zone) => {
         if (!nextZoneLightingData[zone.id]) {
-          nextZoneLightingData[zone.id] = createDefaultZoneLightingData();
+          nextZoneLightingData[zone.id] =
+            seedFromMirror && zone.id === firstNewZoneId
+              ? mirrorToZoneData(current)
+              : createDefaultZoneLightingData();
           changed = true;
         }
       });
