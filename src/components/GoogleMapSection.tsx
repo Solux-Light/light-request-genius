@@ -123,6 +123,18 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
     map.setMapTypeId(mapType);
+    // Google Maps can paint a blank/grey canvas when it initialises inside the
+    // page's fade-in animation (opacity/transform create a compositing layer).
+    // Once the animation has settled, force a redraw so the tiles appear without
+    // needing a manual pan/zoom first. Re-applying the CURRENT center avoids
+    // snapping back if the user has already moved the map.
+    window.setTimeout(() => {
+      const m = mapRef.current;
+      if (!m) return;
+      google.maps.event.trigger(m, "resize");
+      const center = m.getCenter();
+      if (center) m.setCenter(center);
+    }, 450);
   }, [mapType]);
 
   const debouncedMapViewChange = useMemo(() => {
