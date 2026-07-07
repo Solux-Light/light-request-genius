@@ -388,7 +388,8 @@ const SoluxIntake = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Header. Context while scrolling long profiles is provided by the
+          per-profile sticky header inside the Work-From-PDF-Profile workflow. */}
       <header className="border-b">
         <div className="max-w-7xl mx-auto flex items-center justify-between py-3 px-4">
           <div className="flex items-center gap-3">

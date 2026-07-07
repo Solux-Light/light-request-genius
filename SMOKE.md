@@ -42,6 +42,10 @@ Goal: catch regressions in the two core flows and the PDF deliverable before com
 - [ ] Step 5: Lighting Program — **compact table editor** (direct numeric inputs: night/morning hours, per-period mode/hours/power/boost/detections, thin timeline preview, "Fit" when periods ≠ night − morning). Fully per-profile: edit one profile's program, switch profiles → others unchanged. Per-profile notes below.
 - [ ] "Copy levels from…" (≥2 profiles): copies levels by segment TYPE (Main Road → Main Road…), updates matches, appends missing kinds, leaves target-only kinds untouched.
 - [ ] In this mode the global "Lighting Scenario" section and the PDF "Lighting Programming" block are hidden (each profile prints its own program).
+- [ ] Sticky context header: scroll deep into a profile → "📍 <Profile> → <Section>" stays pinned at top (updates to the section whose row you focus).
+- [ ] Map (Area Lighting): container is 640px tall (comfortable drawing).
+- [ ] One Lighting Program: only LightingProgramTable exists (zone, road builder, profiles); Morning Time present in all three. Multi-product's per-zone field is "Scenario notes" (a free note, not a second program).
+- [ ] PDF: zone levels render as horizontal tables (Zone | Avg | Min | U₀ | CCT | Night | 🌅 Morning) + a requested-product table, scannable at a glance; Morning Time appears even with no zone drawn.
 - [ ] Plan hidden by default → "Show plan" opens the annotation viewer (lasso/markers/zoom identical to Area Lighting).
 - [ ] With ≥2 profiles: "Project Summary" table (Profile | Road Segments | Requested Product | Height | Program).
 - [ ] **Export PDF** → summary table (if ≥2), then per profile: requested product block (no optic) + lighting-levels table + profile notes.

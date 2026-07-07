@@ -177,69 +177,90 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           </section>
         )}
 
-        {/* Zone Lighting Levels */}
-        {form.projectType === "zone" && (
-          <section style={{ marginBottom: 20 }}>
-            <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
-              {l("Niveaux d'éclairage", "Lighting Levels")}
-            </h2>
-            {Object.keys(form.zoneLightingData).length > 0 ? Object.entries(form.zoneLightingData).map(([zoneId, zoneData]) => (
-              <div key={zoneId} style={{ marginBottom: 12, padding: 8, border: "1px solid #e5e7eb", borderRadius: 4 }}>
-                <p style={{ fontWeight: 700, marginBottom: 6 }}>{zoneNameById[zoneId] || zoneId}</p>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <tbody>
-                    {[
-                      [l("Lux moyen", "Average Lux"), zoneData.avgLux || "—"],
-                      [l("Uniformité", "Uniformity"), zoneData.uniformity || "—"],
-                      [l("Lux minimum", "Min Lux"), zoneData.minLux || "—"],
-                      ["CCT", zoneData.cct || "—"],
-                      [l("Durée de nuit", "Night Duration"), `${zoneData.lightingNightHours}h`],
-                      ...(zoneData.morningTimeH > 0 ? [["Morning Time", `${zoneData.morningTimeH}h @ ${zoneData.morningIntensityPct}% (${l("avant le lever du soleil", "before sunrise")})`]] : []),
-                      [l("Produit", "Product"), PRODUCT_LABELS[zoneData.product] || zoneData.product || "—"],
-                      [l("Hauteur luminaire", "Luminaire Height"), formatHeight(zoneData.luminaireHeight, lang)],
-                      [l("Espacement", "Spacing"), zoneData.spacing ? `${zoneData.spacing}m` : "—"],
-                      [l("Batterie", "Battery"), zoneData.batteryChoice === "custom" ? `Custom: ${zoneData.batteryWh}Wh` : "Standard"],
-                      [l("Panneau", "Panel"), zoneData.panelChoice === "custom" ? `Custom: ${zoneData.panelWp}Wp` : "Standard"],
-                      [l("Alternative", "Alternative"), zoneData.alternativeAccepted ? (zoneData.alternativeDetails || l("Oui", "Yes")) : l("Non", "No")],
-                    ].map(([label, val], i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
-                        <td style={{ padding: "4px 8px" }}>{val}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {zoneData.lightingSegments.length > 0 && zoneData.lightingSegments.map((seg, i) => (
-                  <p key={seg.id} style={{ fontSize: 11, marginTop: 4 }}>
-                    {l("Période", "Period")} {i + 1}: {periodText(seg)}
-                  </p>
-                ))}
-                {zoneData.morningTimeH > 0 && (
-                  <p style={{ fontSize: 11, marginTop: 4, color: "#92400e" }}>
-                    🌅 Morning Time: {zoneData.morningTimeH}h @ {zoneData.morningIntensityPct}% — {l("se termine au lever du soleil", "ends at sunrise")}
-                  </p>
-                )}
-              </div>
-            )) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        {/* Zone Lighting Levels — horizontal engineering tables (mirror the app):
+            requirements at a glance, then the requested product, then the
+            program per zone (Morning Time included consistently). */}
+        {form.projectType === "zone" && (() => {
+          const th = { padding: "4px 6px", fontWeight: 700 } as const;
+          const td = { padding: "4px 6px" } as const;
+          const headRow = { borderBottom: "1.5px solid #111", backgroundColor: "#f9fafb" } as const;
+          const entries = Object.entries(form.zoneLightingData);
+          // Fall back to the top-level fields when no zone was drawn, so the
+          // program (and Morning Time) is never dropped from the document.
+          const rows = entries.length > 0
+            ? entries.map(([zoneId, zd]) => ({ id: zoneId, name: zoneNameById[zoneId] || zoneId, zd }))
+            : [{
+                id: "current",
+                name: form.assignedArea ? (zoneNameById[form.assignedArea] || form.assignedArea) : l("Zone", "Zone"),
+                zd: {
+                  avgLux: form.avgLux, uniformity: form.uniformity, minLux: form.minLux, cct: form.cct,
+                  lightingSegments: form.lightingSegments, lightingNightHours: form.lightingNightHours,
+                  morningTimeH: form.morningTimeH, morningIntensityPct: form.morningIntensityPct,
+                  product: form.product, luminaireHeight: form.luminaireHeight, spacing: form.spacing,
+                  optimizeHeight: form.optimizeHeight, optimizeSpacing: form.optimizeSpacing,
+                  batteryChoice: form.batteryChoice, batteryWh: form.batteryWh,
+                  panelChoice: form.panelChoice, panelWp: form.panelWp,
+                  alternativeAccepted: form.alternativeAccepted, alternativeDetails: form.alternativeDetails,
+                },
+              }];
+          return (
+            <section style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
+                {l("Niveaux d'éclairage demandés", "Requested Lighting Levels")}
+              </h2>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, marginBottom: 8 }}>
                 <tbody>
-                  {[
-                    [l("Zone assignée", "Assigned Zone"), form.assignedArea || "—"],
-                    [l("Lux moyen", "Average Lux"), form.avgLux || "—"],
-                    [l("Uniformité", "Uniformity"), form.uniformity || "—"],
-                    [l("Lux minimum", "Min Lux"), form.minLux || "—"],
-                    ["CCT", form.cct],
-                  ].map(([label, val], i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "4px 8px", fontWeight: 600, width: "40%" }}>{label}</td>
-                      <td style={{ padding: "4px 8px" }}>{val}</td>
+                  <tr style={headRow}>
+                    {[l("Zone", "Zone"), l("Lux moy", "Avg Lux"), l("Lux min", "Min Lux"), l("Uniformité", "Uniformity"), "CCT", l("Nuit", "Night"), "🌅 Morning"].map((h, i) => (
+                      <td key={i} style={th}>{h}</td>
+                    ))}
+                  </tr>
+                  {rows.map((r) => (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+                      <td style={td}>{r.zd.avgLux || "—"}</td>
+                      <td style={td}>{r.zd.minLux || "—"}</td>
+                      <td style={td}>{r.zd.uniformity || "—"}</td>
+                      <td style={td}>{r.zd.cct || "—"}</td>
+                      <td style={td}>{r.zd.lightingNightHours}h</td>
+                      <td style={td}>{r.zd.morningTimeH > 0 ? `${r.zd.morningTimeH}h @ ${r.zd.morningIntensityPct}%` : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </section>
-        )}
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, marginBottom: 8 }}>
+                <tbody>
+                  <tr style={headRow}>
+                    {[l("Zone", "Zone"), l("Produit", "Product"), l("Hauteur", "Height"), l("Espacement", "Spacing"), l("Batterie", "Battery"), l("Panneau", "Panel"), "Alt."].map((h, i) => (
+                      <td key={i} style={th}>{h}</td>
+                    ))}
+                  </tr>
+                  {rows.map((r) => (
+                    <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+                      <td style={td}>{PRODUCT_LABELS[r.zd.product] || r.zd.product || "—"}</td>
+                      <td style={td}>{formatHeight(r.zd.luminaireHeight, lang)}</td>
+                      <td style={td}>{r.zd.spacing ? `${r.zd.spacing}m` : "—"}</td>
+                      <td style={td}>{r.zd.batteryChoice === "custom" ? `${r.zd.batteryWh}Wh` : "Std"}</td>
+                      <td style={td}>{r.zd.panelChoice === "custom" ? `${r.zd.panelWp}Wp` : "Std"}</td>
+                      <td style={td}>{r.zd.alternativeAccepted ? (r.zd.alternativeDetails || l("Oui", "Yes")) : l("Non", "No")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rows.filter((r) => r.zd.lightingSegments && r.zd.lightingSegments.length > 0).map((r) => (
+                <p key={r.id} style={{ fontSize: 10, marginTop: 2 }}>
+                  <strong>{r.name}</strong> — {programSummary({
+                    nightHours: r.zd.lightingNightHours,
+                    morningTimeH: r.zd.morningTimeH,
+                    morningIntensityPct: r.zd.morningIntensityPct,
+                    segments: r.zd.lightingSegments,
+                  })}
+                </p>
+              ))}
+            </section>
+          );
+        })()}
 
         {/* Road Profile */}
         {form.projectType === "road" && form.roadInputMode === "builder" && form.roadProfile.length > 0 && (
@@ -556,7 +577,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                 {a.cct && <p>CCT: {String(a.cct).replace(/k$/i, "")}K</p>}
                 {(a.luminaireHeight || a.spacing) && <p>{l("Hauteur", "Height")}: {a.luminaireHeight || "—"}m · {l("Espacement", "Spacing")}: {a.spacing || "—"}m</p>}
                 {a.presenceDetection && <p>{l("Détection de présence", "Presence Detection")}: {l("Oui", "Yes")}{a.detectionCount ? ` (${a.detectionCount}${a.detectionDuration ? `, ${a.detectionDuration}` : ""})` : ""}</p>}
-                {a.scenarioText && <p>{l("Scénario", "Scenario")}: {a.scenarioText}</p>}
+                {a.scenarioText && <p>{l("Notes de scénario", "Scenario notes")}: {a.scenarioText}</p>}
               </div>
             ))}
           </section>

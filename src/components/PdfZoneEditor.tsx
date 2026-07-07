@@ -415,7 +415,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props
       </div>
 
       {/* Canvas */}
-      <div ref={containerRef} className="border rounded-lg overflow-auto max-h-[600px] relative">
+      <div ref={containerRef} className="border rounded-lg overflow-auto max-h-[760px] relative">
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}

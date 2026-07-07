@@ -150,8 +150,10 @@ const ProductSelectionSection = ({
                 <Input value={row.cct || ""} onChange={(e) => updateAssignment(row.id, "cct", e.target.value)} placeholder="4000" />
               </div>
               <div className="md:col-span-2 space-y-1">
-                <Label className="text-xs">{l("Scénario", "Scenario")}</Label>
-                <Textarea value={row.scenarioText || ""} onChange={(e) => updateAssignment(row.id, "scenarioText", e.target.value)} rows={2} />
+                {/* Lightweight per-zone note — the structured Lighting Program
+                    (with Morning Time) lives in the shared LightingProgramTable. */}
+                <Label className="text-xs">{l("Notes de scénario", "Scenario notes")}</Label>
+                <Textarea value={row.scenarioText || ""} onChange={(e) => updateAssignment(row.id, "scenarioText", e.target.value)} rows={2} placeholder={l("Note libre…", "Free note…")} />
               </div>
             </div>
             <div className="flex items-center gap-3">

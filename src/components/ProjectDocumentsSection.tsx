@@ -94,6 +94,9 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
   const [dragging, setDragging] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState<Record<string, boolean>>({});
+  // Which road section the user is currently editing — surfaced in the sticky
+  // context header so context isn't lost when scrolling long profiles.
+  const [focusedSegId, setFocusedSegId] = useState<string | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
   const replaceTargetId = useRef<string | null>(null);
@@ -421,18 +424,28 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
         </div>
       )}
 
-      {/* Selected profile configuration */}
-      {selected && (
-        <div className="rounded-lg border bg-card overflow-hidden">
-          {/* Panel header */}
-          <div className="flex flex-wrap items-center gap-3 p-3 border-b bg-muted/30">
+      {/* Selected profile configuration.
+          No overflow-hidden here: it would break the sticky panel header. */}
+      {selected && (() => {
+        const focusedSeg = selected.segments.find((s) => s.id === focusedSegId);
+        return (
+        <div className="rounded-lg border bg-card">
+          {/* Sticky panel header — keeps "which profile → which section" visible
+              while scrolling. Opaque bg so content doesn't show through. */}
+          <div className="sticky top-0 z-40 flex flex-wrap items-center gap-3 p-3 border-b rounded-t-lg bg-card/95 backdrop-blur shadow-sm">
+            <span className="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-sm font-semibold text-primary">
+              📍 {selected.profileName || l("Sans nom", "Untitled")}
+              {focusedSeg && (
+                <span className="text-primary/70">→ {segDisplayName(focusedSeg)}</span>
+              )}
+            </span>
             <Input
               value={selected.profileName}
               onChange={(e) => updateDoc(selected.id, { profileName: e.target.value })}
               placeholder={l("Nom du profil", "Profile Name")}
-              className="h-9 max-w-[220px] font-medium"
+              className="h-9 max-w-[200px] font-medium"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden md:inline text-xs text-muted-foreground">
               {selected.fileName} · {fmtDate(selected.uploadedAt)}
             </span>
             <div className="ml-auto flex gap-1">
@@ -510,7 +523,7 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                   </thead>
                   <tbody>
                     {selected.segments.map((seg) => (
-                      <tr key={seg.id} className="border-b last:border-0 align-top">
+                      <tr key={seg.id} className="border-b last:border-0 align-top" onFocusCapture={() => setFocusedSegId(seg.id)}>
                         <td className="px-1 py-1">
                           <Select value={seg.kind} onValueChange={(v) => updateSegment(selected, seg.id, { kind: v })}>
                             <SelectTrigger className="h-8 border-0 bg-transparent focus:ring-1 focus:ring-primary"><SelectValue /></SelectTrigger>
@@ -720,7 +733,8 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {documents.length === 0 && (
         <div className="border border-dashed rounded-lg p-6 text-center text-sm text-muted-foreground">

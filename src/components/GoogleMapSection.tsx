@@ -10,7 +10,9 @@ import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 const MAP_CLICK_SUPPRESSION_MS = 250;
 const MAP_VIEW_DEBOUNCE_MS = 500;
-const MAP_CONTAINER_STYLE = { width: "100%", height: "500px", borderRadius: "0.5rem" } as const;
+// Taller map now that the page uses the full widescreen width — more room to
+// draw and review project areas comfortably.
+const MAP_CONTAINER_STYLE = { width: "100%", height: "640px", borderRadius: "0.5rem" } as const;
 
 const debounce = <A extends unknown[]>(fn: (...args: A) => void, ms: number) => {
   let timer: ReturnType<typeof setTimeout> | undefined;
