@@ -11,18 +11,22 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Home, Send } from "lucide-react";
+import { Home, Send, Globe, MessageSquareText } from "lucide-react";
 import GoogleMapSection from "@/components/GoogleMapSection";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
 import ProductSelectionSection from "@/components/ProductSelectionSection";
-import LightingScenarioEditor from "@/components/LightingScenarioEditor";
+import LightingProgramTable from "@/components/LightingProgramTable";
+import StepHeader from "@/components/StepHeader";
 import RoadBuilder from "@/components/RoadBuilder";
 import RoadLightingLayout from "@/components/RoadLightingLayout";
+import ProjectDocumentsSection from "@/components/ProjectDocumentsSection";
 import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData } from "@/types/solux";
+import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData, LightingSegment } from "@/types/solux";
 import { saveSubmission } from "@/lib/submissions";
+import { geocodeCity, resolveWinterSolsticeDusk } from "@/lib/solarNight";
+import { buildProjectKml, downloadKml } from "@/lib/kml";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -35,6 +39,8 @@ const mirrorToZoneData = (f: SoluxForm): ZoneLightingData => ({
   cct: f.cct,
   lightingSegments: f.lightingSegments.map((s) => ({ ...s })),
   lightingNightHours: f.lightingNightHours,
+  morningTimeH: f.morningTimeH,
+  morningIntensityPct: f.morningIntensityPct,
   product: f.product,
   luminaireHeight: f.luminaireHeight,
   spacing: f.spacing,
@@ -48,6 +54,26 @@ const mirrorToZoneData = (f: SoluxForm): ZoneLightingData => ({
   alternativeDetails: f.alternativeDetails,
 });
 
+const NIGHT_MIN_H = 4;
+const NIGHT_MAX_H = 24; // matches the Lighting Program table bounds
+const snap30 = (h: number) => Math.round(h * 2) / 2;
+const clampNightHours = (h: number) => Math.min(NIGHT_MAX_H, Math.max(NIGHT_MIN_H, snap30(h)));
+
+// Rescale the program's period durations proportionally so they still sum to the
+// new night length (mirrors the "Fit" rescale inside LightingProgramTable).
+const scaleSegmentsToTotal = (segs: LightingSegment[], total: number): LightingSegment[] => {
+  const sum = segs.reduce((s, x) => s + x.hours, 0);
+  if (sum <= 0) return segs.map((s) => ({ ...s }));
+  const scaled = segs.map((s) => ({ ...s, hours: snap30((s.hours / sum) * total) }));
+  const newSum = scaled.reduce((s, x) => s + x.hours, 0);
+  const diff = Math.round((total - newSum) * 100) / 100;
+  if (diff !== 0 && scaled.length) {
+    const last = scaled.length - 1;
+    scaled[last].hours = Math.max(0.5, snap30(scaled[last].hours + diff));
+  }
+  return scaled;
+};
+
 const SoluxIntake = () => {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
@@ -55,6 +81,7 @@ const SoluxIntake = () => {
   const [form, setForm] = useState<SoluxForm>({ ...defaultForm });
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [computingDusk, setComputingDusk] = useState(false);
   const directExportRef = useRef<HTMLDivElement>(null);
 
   const l = useCallback((fr: string, en: string) => (lang === "fr" ? fr : en), [lang]);
@@ -179,6 +206,7 @@ const SoluxIntake = () => {
 
   const syncAssignedZoneData = useCallback((updates: Partial<Pick<SoluxForm,
     "avgLux" | "uniformity" | "minLux" | "cct" | "lightingSegments" | "lightingNightHours"
+    | "morningTimeH" | "morningIntensityPct"
     | "product" | "luminaireHeight" | "spacing" | "optimizeHeight" | "optimizeSpacing"
     | "batteryChoice" | "batteryWh" | "panelChoice" | "panelWp"
     | "alternativeAccepted" | "alternativeDetails"
@@ -209,12 +237,80 @@ const SoluxIntake = () => {
     });
   }, []);
 
-  const handleLightingScenarioChange = useCallback(
-    (segments: SoluxForm["lightingSegments"], nightHours: number) => {
-      syncAssignedZoneData({ lightingSegments: segments, lightingNightHours: nightHours });
-    },
-    [syncAssignedZoneData]
-  );
+  // Compute the worst-case sizing references (longest night + winter-solstice
+  // sunset) from the project's latitude, then auto-fill the night duration and
+  // the program start time. Uses the map pin when available, otherwise geocodes
+  // the typed city/address.
+  const handleAutoCalcNight = useCallback(async () => {
+    setComputingDusk(true);
+    try {
+      let loc = form.location;
+      let geoFormatted: string | undefined;
+      if (!loc) {
+        const query = [form.address, form.locality, form.country].filter(Boolean).join(", ");
+        if (!query.trim()) {
+          toast({
+            title: l("Lieu manquant", "Location missing"),
+            description: l("Renseignez d'abord une ville/adresse ou placez un point sur la carte.", "Enter a city/address first, or drop a point on the map."),
+            variant: "destructive",
+          });
+          return;
+        }
+        const geo = await geocodeCity(query, GOOGLE_MAPS_API_KEY);
+        if (!geo) {
+          toast({
+            title: l("Ville introuvable", "City not found"),
+            description: l("Géocodage indisponible (API non activée ?). Placez un point sur la carte comme alternative.", "Geocoding unavailable (API not enabled?). Drop a point on the map instead."),
+            variant: "destructive",
+          });
+          return;
+        }
+        loc = geo.location;
+        geoFormatted = geo.formatted;
+      }
+
+      const res = await resolveWinterSolsticeDusk(loc, GOOGLE_MAPS_API_KEY, new Date().getFullYear());
+      const nightH = clampNightHours(res.longestNightH);
+
+      setForm((current) => {
+        // Standard periods cover the night minus the fixed Morning Time block.
+        const scaled = scaleSegmentsToTotal(current.lightingSegments, Math.max(1, nightH - current.morningTimeH));
+        const next: SoluxForm = {
+          ...current,
+          location: current.location ?? loc!,
+          address: current.address || geoFormatted || current.address,
+          lightingSegments: scaled,
+          lightingNightHours: nightH,
+          // Store the snapped value so the reference, the slider and the PDF all
+          // agree (the raw astronomical value, e.g. 15.97 h, only differs by the
+          // 0.5 h slider granularity).
+          longestNightH: nightH,
+          duskHHMM: res.hhmm,
+          duskBasis: res.basis,
+        };
+        if (!current.assignedArea) return next;
+        const zd = current.zoneLightingData[current.assignedArea] ?? createDefaultZoneLightingData();
+        return {
+          ...next,
+          zoneLightingData: {
+            ...current.zoneLightingData,
+            [current.assignedArea]: {
+              ...zd,
+              lightingSegments: scaled.map((s) => ({ ...s })),
+              lightingNightHours: nightH,
+            },
+          },
+        };
+      });
+
+      toast({
+        title: l("Calcul effectué", "Calculation done"),
+        description: `${l("Nuit la plus longue", "Longest night")}: ${nightH}h · ${l("Coucher", "Sunset")}: ${res.hhmm} (${res.basis === "legal" ? l("heure légale", "legal time") : l("heure solaire", "solar time")})`,
+      });
+    } finally {
+      setComputingDusk(false);
+    }
+  }, [form.location, form.address, form.locality, form.country, toast, l]);
 
   useEffect(() => {
     setForm((current) => {
@@ -263,6 +359,8 @@ const SoluxIntake = () => {
         cct: zoneData.cct,
         lightingSegments: zoneData.lightingSegments.map((segment) => ({ ...segment })),
         lightingNightHours: zoneData.lightingNightHours,
+        morningTimeH: zoneData.morningTimeH,
+        morningIntensityPct: zoneData.morningIntensityPct,
         product: zoneData.product,
         luminaireHeight: zoneData.luminaireHeight,
         spacing: zoneData.spacing,
@@ -284,11 +382,15 @@ const SoluxIntake = () => {
 
   // No auth gate - form is accessible to everyone
 
+  // Sequential step numbering — conditional sections only consume a number
+  // when rendered, so zone and road flows both read 1…N without gaps.
+  let stepNo = 0;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b">
-        <div className="max-w-5xl mx-auto flex items-center justify-between py-3 px-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between py-3 px-4">
           <div className="flex items-center gap-3">
             <img
               src="/lovable-uploads/d872661a-d41f-4565-9853-2f2195d3f284.png"
@@ -316,7 +418,8 @@ const SoluxIntake = () => {
       </header>
 
       {/* Main Form */}
-      <main className="max-w-5xl mx-auto px-4 py-8">
+      {/* Desktop-first: use widescreen real estate (was max-w-5xl / 1024px) */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="animate-fade-in">
           <Card>
             <CardContent className="p-6">
@@ -324,7 +427,9 @@ const SoluxIntake = () => {
 
                 {/* Section 1: General Information */}
                 <section>
-                  <h2 className="text-xl font-semibold mb-4">{l("Informations générales", "General Information")}</h2>
+                  <div className="mb-4">
+                    <StepHeader n={++stepNo} title={l("Informations générales", "General Information")} hint={l("Identité du projet et du client.", "Project and customer identity.")} />
+                  </div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>{l("Nom du projet *", "Project Name *")}</Label>
@@ -349,7 +454,9 @@ const SoluxIntake = () => {
 
                 {/* Section 2: Project Type */}
                 <section>
-                  <h2 className="text-xl font-semibold mb-4">{l("Type de projet", "Project Type")}</h2>
+                  <div className="mb-4">
+                    <StepHeader n={++stepNo} title={l("Type de projet", "Project Type")} hint={l("Le choix détermine le déroulé des étapes suivantes.", "This choice drives the following steps.")} />
+                  </div>
                   <div className="grid md:grid-cols-2 gap-4">
                     <button
                       type="button"
@@ -397,11 +504,13 @@ const SoluxIntake = () => {
                 {form.projectType === "zone" && (
                   <>
                     <section>
-                      <h2 className="text-xl font-semibold mb-4">{l("Emplacement", "Location")}</h2>
+                      <div className="mb-4">
+                        <StepHeader n={++stepNo} title={l("Emplacement", "Location")} hint={l("Carte interactive ou plan fourni par le client.", "Interactive map or the customer's plan.")} />
+                      </div>
                       <Tabs value={form.locationMode} onValueChange={(v) => onChange("locationMode", v as "map" | "pdf")}>
                         <TabsList>
                           <TabsTrigger value="map">{l("Carte", "Map")}</TabsTrigger>
-                          <TabsTrigger value="pdf">PDF</TabsTrigger>
+                          <TabsTrigger value="pdf">{l("Plan (PDF/Image/CAO)", "Plan (PDF/Image/CAD)")}</TabsTrigger>
                         </TabsList>
                         <TabsContent value="map">
                           <GoogleMapSection
@@ -428,7 +537,13 @@ const SoluxIntake = () => {
                     </section>
 
                     <section>
-                      <h2 className="text-xl font-semibold mb-4">{l("Zone d'étude assignée", "Assigned Study Area")}</h2>
+                      <div className="mb-4">
+                        <StepHeader
+                          n={++stepNo}
+                          title={l("Zone d'étude & niveaux d'éclairage", "Study Area & Lighting Levels")}
+                          hint={l("Choisissez la zone puis saisissez les niveaux demandés par le client.", "Pick the zone, then enter the customer's requested levels.")}
+                        />
+                      </div>
                       {allZones.length > 0 ? (
                         <Select value={form.assignedArea} onValueChange={(v) => {
                           const saved = form.zoneLightingData[v] ?? createDefaultZoneLightingData();
@@ -441,6 +556,8 @@ const SoluxIntake = () => {
                             cct: saved.cct,
                             lightingSegments: saved.lightingSegments.map((segment) => ({ ...segment })),
                             lightingNightHours: saved.lightingNightHours,
+                            morningTimeH: saved.morningTimeH,
+                            morningIntensityPct: saved.morningIntensityPct,
                             product: saved.product,
                             luminaireHeight: saved.luminaireHeight,
                             spacing: saved.spacing,
@@ -470,14 +587,7 @@ const SoluxIntake = () => {
                       ) : (
                         <p className="text-sm text-muted-foreground">{l("Aucune zone créée", "No zones created")}</p>
                       )}
-                    </section>
-
-                    <section>
-                      <h2 className="text-xl font-semibold mb-4">{l("Niveaux d'éclairage", "Lighting Levels")}</h2>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {l("Définissez les niveaux d'éclairage requis pour cette zone.", "Define the required lighting levels for this zone.")}
-                      </p>
-                      <div className="grid md:grid-cols-2 gap-4">
+                      <div className="mt-4 grid md:grid-cols-4 gap-4">
                         <div className="space-y-2">
                           <Label>{l("Lux moyen minimum *", "Required Average Illuminance (lux) *")}</Label>
                           <Input value={form.avgLux} onChange={(e) => syncAssignedZoneData({ avgLux: e.target.value })} placeholder="15" required />
@@ -506,16 +616,29 @@ const SoluxIntake = () => {
                   </>
                 )}
 
-                {/* Section 3B: Road Mode */}
+                {/* Section 3B: Road Mode — Road Builder or Work From PDF Profile */}
                 {form.projectType === "road" && (
-                  <>
+                  <Tabs value={form.roadInputMode} onValueChange={(v) => onChange("roadInputMode", v as "builder" | "pdf_profile")}>
+                    <div className="mb-4">
+                      <StepHeader
+                        n={++stepNo}
+                        title={l("Éclairage routier", "Road & Street Lighting")}
+                        hint={l("Construisez la route ou travaillez depuis le profil fourni par le client (déroulé guidé).", "Build the road, or work from the customer's profile (guided sub-steps).")}
+                      />
+                    </div>
+                    <TabsList className="mb-6">
+                      <TabsTrigger value="builder">{l("Constructeur de route", "Road Builder")}</TabsTrigger>
+                      <TabsTrigger value="pdf_profile">{l("Depuis un profil PDF", "Work From PDF Profile")}</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="builder" className="space-y-8 mt-0">
                     <section>
-                      <h2 className="text-xl font-semibold mb-4">{l("Construction de route", "Road Builder")}</h2>
+                      <h3 className="text-lg font-semibold mb-4">{l("Construction de route", "Road Builder")}</h3>
                       <RoadBuilder value={form.roadProfile} onChange={(v) => onChange("roadProfile", v)} lang={lang} />
                     </section>
 
                     <section>
-                      <h2 className="text-xl font-semibold mb-4">{l("Configuration d'éclairage routier", "Road Lighting Layout")}</h2>
+                      <h3 className="text-lg font-semibold mb-4">{l("Configuration d'éclairage routier", "Road Lighting Layout")}</h3>
                       <RoadLightingLayout
                         value={form.roadLighting}
                         onChange={(v) => onChange("roadLighting", v)}
@@ -527,7 +650,7 @@ const SoluxIntake = () => {
                     {/* Per-segment lighting levels */}
                     {form.roadProfile.length > 0 && uniqueSegmentTypes.length > 0 && (
                       <section>
-                        <h2 className="text-xl font-semibold mb-4">{l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}</h2>
+                        <h3 className="text-lg font-semibold mb-4">{l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}</h3>
                         {uniqueSegmentTypes.map((segType) => {
                           const segInfo = SEGMENT_TYPES.find((t) => t.value === segType);
                           const segLighting = form.roadSegmentLighting[segType] || { avgLux: "", uniformity: "", minLux: "", cct: "4000K" };
@@ -596,17 +719,27 @@ const SoluxIntake = () => {
                         })}
                       </section>
                     )}
-                  </>
+                    </TabsContent>
+
+                    <TabsContent value="pdf_profile" className="mt-0">
+                      <ProjectDocumentsSection
+                        documents={form.roadDocuments}
+                        onChange={(docs) => onChange("roadDocuments", docs)}
+                        notes={form.roadProfileNotes}
+                        onNotesChange={(v) => onChange("roadProfileNotes", v)}
+                        lang={lang}
+                      />
+                    </TabsContent>
+                  </Tabs>
                 )}
 
                 <Separator />
 
                 {/* Section 4: Product Selection */}
                 <section>
-                  <h2 className="text-xl font-semibold mb-2">{l("Sélection du produit", "Product Selection")}</h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {l("Choisissez le produit Solux adapté.", "Choose the appropriate Solux product.")}
-                  </p>
+                  <div className="mb-4">
+                    <StepHeader n={++stepNo} title={l("Sélection du produit", "Product Selection")} hint={l("Choisissez le produit Solux adapté.", "Choose the appropriate Solux product.")} />
+                  </div>
                   {form.projectType === "zone" && selectedZoneOption && (
                     <p className="text-sm text-muted-foreground mb-4">
                       {l("Produit appliqué à la zone sélectionnée :", "Product applied to selected zone:")} <span className="font-medium text-foreground">{selectedZoneOption.name}</span>
@@ -642,26 +775,69 @@ const SoluxIntake = () => {
 
                 <Separator />
 
-                {/* Section 5: Lighting Scenario */}
+                {/* Section 5: Lighting Scenario — hidden in Work-From-PDF-Profile
+                    mode, where each cross-section profile owns its own program. */}
+                {!(form.projectType === "road" && form.roadInputMode === "pdf_profile") && (
+                <>
                 <section>
-                  <h2 className="text-xl font-semibold mb-2">{l("Scénario d'éclairage", "Lighting Scenario")}</h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {l("Configurez le programme d'éclairage nocturne.", "Configure the nighttime lighting program using the timeline editor.")}
-                  </p>
+                  <div className="mb-4">
+                    <StepHeader
+                      n={++stepNo}
+                      title={l("Programme d'éclairage", "Lighting Program")}
+                      hint={l("Saisie directe : nuit, Morning Time, périodes, détection.", "Direct entry: night, Morning Time, periods, detection.")}
+                    />
+                  </div>
                   {selectedZoneOption && (
                     <p className="text-sm text-muted-foreground mb-4">
                       {l("Scénario appliqué à la zone sélectionnée :", "Scenario applied to selected zone:")} <span className="font-medium text-foreground">{selectedZoneOption.name}</span>
                     </p>
                   )}
-                  <LightingScenarioEditor
-                    valueSegments={form.lightingSegments}
-                    valueNightHours={form.lightingNightHours}
-                    onChange={handleLightingScenarioChange}
+                  <div className="mb-4 rounded-lg border bg-muted/30 p-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button type="button" variant="outline" onClick={handleAutoCalcNight} disabled={computingDusk}>
+                        {computingDusk ? l("Calcul…", "Calculating…") : l("🌙 Calculer depuis le lieu", "🌙 Auto-calculate from location")}
+                      </Button>
+                      <p className="text-xs text-muted-foreground flex-1 min-w-[220px]">
+                        {l(
+                          "Estime la nuit la plus longue (solstice d'hiver) et l'heure de coucher du soleil à partir de la ville — référence de dimensionnement pire cas.",
+                          "Estimates the longest night (winter solstice) and the sunset time from the city — the worst-case sizing reference.",
+                        )}
+                      </p>
+                    </div>
+                    {form.duskHHMM && (
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-3 text-sm">
+                        <span>🌙 {l("Nuit la plus longue", "Longest night")}: <strong>{`${form.longestNightH || form.lightingNightHours}h`}</strong></span>
+                        <span>
+                          🌇 {l("Coucher du soleil (solstice)", "Sunset (solstice)")}: <strong>{form.duskHHMM}</strong>{" "}
+                          <span className="text-xs text-muted-foreground">
+                            ({form.duskBasis === "legal" ? l("heure légale", "legal time") : l("heure solaire", "solar time")})
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Standard program module (same as the profile workflow) —
+                      one implementation across the whole application. */}
+                  <LightingProgramTable
+                    value={{
+                      nightHours: form.lightingNightHours,
+                      morningTimeH: form.morningTimeH,
+                      morningIntensityPct: form.morningIntensityPct,
+                      segments: form.lightingSegments,
+                    }}
+                    onChange={(next) => syncAssignedZoneData({
+                      lightingSegments: next.segments,
+                      lightingNightHours: next.nightHours,
+                      morningTimeH: next.morningTimeH,
+                      morningIntensityPct: next.morningIntensityPct,
+                    })}
                     lang={lang}
                   />
                 </section>
 
                 <Separator />
+                </>
+                )}
 
                 {/* Section 6: Multi-Product Toggle */}
                 <section>
@@ -729,14 +905,29 @@ const SoluxIntake = () => {
 
                 {/* Section 7: Additional Information */}
                 <section>
-                  <h2 className="text-xl font-semibold mb-4">{l("Informations supplémentaires", "Additional Information")}</h2>
+                  <div className="mb-4">
+                    <StepHeader n={++stepNo} title={l("Informations supplémentaires", "Additional Information")} hint={l("Notes pour le Study Lab et pièces jointes.", "Notes for the Study Lab and attachments.")} />
+                  </div>
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>{l("Notes techniques", "Technical Notes")}</Label>
+                    {/* Notes & discussion — deliberately prominent so nothing
+                        that doesn't fit a structured field gets lost. */}
+                    <div className="rounded-lg border-2 border-primary/40 bg-[hsl(var(--callout))] p-5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <MessageSquareText className="h-5 w-5 text-primary" />
+                        <Label className="text-base font-semibold">{l("Notes & discussion pour le Study Lab", "Notes & Discussion for the Study Lab")}</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {l(
+                          "Demandes client particulières, contraintes d'installation, mâts existants, situations inhabituelles, hypothèses, comptes-rendus de réunion…",
+                          "Special customer requests, installation constraints, existing poles, unusual situations, assumptions, meeting notes…",
+                        )}
+                      </p>
                       <Textarea
                         value={form.technicalNotes}
                         onChange={(e) => onChange("technicalNotes", e.target.value)}
-                        rows={3}
+                        rows={6}
+                        placeholder={l("Expliquez librement le contexte du projet…", "Explain the project context freely…")}
+                        className="bg-background"
                       />
                     </div>
                     <div className="space-y-2">
@@ -758,7 +949,9 @@ const SoluxIntake = () => {
 
                 {/* Section 8: Processing Details */}
                 <section>
-                  <h2 className="text-xl font-semibold mb-4">{l("Détails de traitement", "Processing Details")}</h2>
+                  <div className="mb-4">
+                    <StepHeader n={++stepNo} title={l("Traitement & envoi", "Processing & Submit")} hint={l("Échéance, puis envoi au bureau d'études.", "Deadline, then submit to the design team.")} />
+                  </div>
                   <div className="grid md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>{l("Commercial", "Sales Name")}</Label>
@@ -800,6 +993,28 @@ const SoluxIntake = () => {
                       lang={lang}
                       apiKey={GOOGLE_MAPS_API_KEY}
                     />
+                    {form.location && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={() => {
+                          const kml = buildProjectKml({
+                            projectName: form.projectName,
+                            address: form.address,
+                            location: form.location,
+                            areas: form.areas,
+                            lampposts: form.lampposts,
+                          });
+                          const slug = form.projectName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+                          downloadKml(kml, `${slug}.kml`);
+                        }}
+                        title={l("Exporter les zones et lampadaires pour Google Earth", "Export zones and lampposts for Google Earth")}
+                      >
+                        <Globe className="h-4 w-4 mr-2" />
+                        Google Earth (KML)
+                      </Button>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     {l("Votre demande sera enregistrée et transmise au bureau d'études.", "Your request will be saved and sent to the design team.")}

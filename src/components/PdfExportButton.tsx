@@ -69,6 +69,28 @@ const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en" }:
       pageNum++;
     }
 
+    // The pages above are rasterized images, so hyperlinks in the HTML are
+    // lost. Re-add them as PDF link annotations: any element carrying
+    // data-pdf-link="<url>" gets a clickable region at its rendered position.
+    const contRect = contentRef.current.getBoundingClientRect();
+    const mmPerPx = pdfWidth / contRect.width;
+    contentRef.current.querySelectorAll<HTMLElement>("[data-pdf-link]").forEach((el) => {
+      const url = el.getAttribute("data-pdf-link");
+      if (!url) return;
+      const r = el.getBoundingClientRect();
+      const relYmm = (r.top - contRect.top) * mmPerPx;
+      const page = Math.floor(relYmm / pdfHeight);
+      if (page >= pageNum) return;
+      pdf.setPage(page + 1);
+      pdf.link(
+        margin + (r.left - contRect.left) * mmPerPx,
+        margin + (relYmm - page * pdfHeight),
+        r.width * mmPerPx,
+        r.height * mmPerPx,
+        { url },
+      );
+    });
+
     pdf.save(filename);
   };
 

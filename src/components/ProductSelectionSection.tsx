@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
 import { PRODUCT_OPTIONS, ProductAssignment, MapArea } from "@/types/solux";
+import HeightField from "@/components/HeightField";
 
 interface Props {
   product: string;
@@ -205,7 +206,9 @@ const ProductSelectionSection = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>{l("Hauteur luminaire (m)", "Luminaire Height (m)")}</Label>
-          <Input value={luminaireHeight} onChange={(e) => onLuminaireHeightChange(e.target.value)} placeholder="8" type="number" step="0.5" />
+          {/* Fixed height ("8") or allowed range ("5-8") — transmitted as-is to
+              the Study Lab, which picks the best height inside a range. */}
+          <HeightField value={luminaireHeight} onChange={onLuminaireHeightChange} lang={lang} />
           <div className="flex items-center gap-2">
             <Checkbox checked={optimizeHeight} onCheckedChange={(v) => onOptimizeHeightChange(!!v)} />
             <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>

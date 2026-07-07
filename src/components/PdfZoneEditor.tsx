@@ -2,18 +2,24 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload } from "lucide-react";
-import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS } from "@/types/solux";
+import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS, PROJECT_DOCUMENT_ACCEPT, documentKindFromFile, isAnnotatableKind } from "@/types/solux";
 
 interface Props {
   value: PdfZoneValue;
   onChange: (val: PdfZoneValue) => void;
   lang?: "fr" | "en";
+  // Embedded mode: the parent owns file upload/replace, so hide the built-in
+  // upload dropzone and the "Change PDF" button. Used by the Project Documents
+  // module; Area Lighting leaves this off to keep its behaviour identical.
+  embedded?: boolean;
 }
 
-const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
+const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
+  const isImage = value.mediaType === "image";
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -31,37 +37,80 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
-  // Load PDF
+  // Load the source — a PDF (via pdf.js) or a raster image. Images cover PNG/JPG
+  // uploads and the generated preview of a CAD file; both annotate identically.
   useEffect(() => {
-    if (!value.pdfUrl) return;
+    if (!value.pdfUrl) {
+      setPdfDoc(null);
+      setImgEl(null);
+      return;
+    }
+    let cancelled = false;
+
+    if (isImage) {
+      setPdfDoc(null);
+      const img = new Image();
+      img.onload = () => {
+        if (cancelled) return;
+        setImgEl(img);
+        setTotalPages(1);
+        setCurrentPage(1);
+      };
+      img.onerror = (err) => console.error("Image load failed:", err);
+      img.src = value.pdfUrl;
+      return () => { cancelled = true; };
+    }
+
+    setImgEl(null);
     const loadPdf = async () => {
       const pdfjsLib = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
       const doc = await pdfjsLib.getDocument(value.pdfUrl).promise;
+      if (cancelled) return;
       setPdfDoc(doc);
       setTotalPages(doc.numPages);
       setCurrentPage(1);
     };
     loadPdf().catch(console.error);
-  }, [value.pdfUrl]);
+    return () => { cancelled = true; };
+  }, [value.pdfUrl, isImage]);
 
-  // Render page
+  // Render the base layer + annotation overlay onto the canvas.
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (isImage ? !imgEl : !pdfDoc) return;
     const render = async () => {
-      const page = await pdfDoc.getPage(currentPage);
-      const viewport = page.getViewport({ scale: 1, rotation });
-      const containerWidth = containerRef.current?.clientWidth || 800;
-      const fitScale = containerWidth / viewport.width;
-      setAutoFitScale(fitScale);
-      const effectiveScale = zoom * fitScale;
-      const scaledViewport = page.getViewport({ scale: effectiveScale, rotation });
-
-      const canvas = canvasRef.current!;
-      canvas.width = scaledViewport.width;
-      canvas.height = scaledViewport.height;
       const ctx = canvas.getContext("2d")!;
-      await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+      const containerWidth = containerRef.current?.clientWidth || 800;
+
+      if (isImage) {
+        // Fit-to-width using the rotated footprint so 90°/270° still fits.
+        const swap = rotation === 90 || rotation === 270;
+        const fitScale = containerWidth / (swap ? imgEl!.naturalHeight : imgEl!.naturalWidth);
+        setAutoFitScale(fitScale);
+        const effectiveScale = zoom * fitScale;
+        const drawW = imgEl!.naturalWidth * effectiveScale;
+        const drawH = imgEl!.naturalHeight * effectiveScale;
+        canvas.width = swap ? drawH : drawW;
+        canvas.height = swap ? drawW : drawH;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.drawImage(imgEl!, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+      } else {
+        const page = await pdfDoc.getPage(currentPage);
+        const viewport = page.getViewport({ scale: 1, rotation });
+        const fitScale = containerWidth / viewport.width;
+        setAutoFitScale(fitScale);
+        const effectiveScale = zoom * fitScale;
+        const scaledViewport = page.getViewport({ scale: effectiveScale, rotation });
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+      }
 
       // Draw zones
       const zones = value.zones.filter((z) => z.page === currentPage);
@@ -158,15 +207,40 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
       } catch {}
     };
     render();
-  }, [pdfDoc, currentPage, zoom, rotation, value.zones, value.lampposts, selectedLamppostId, lassoPath]);
+  }, [pdfDoc, imgEl, isImage, currentPage, zoom, rotation, value.zones, value.lampposts, selectedLamppostId, lassoPath]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
     try {
-      const localUrl = URL.createObjectURL(file);
-      onChange({ ...value, pdfUrl: localUrl, zones: [], lampposts: [] });
+      const kind = documentKindFromFile(file);
+      if (isAnnotatableKind(kind)) {
+        // PDFs and images share the exact same annotation tooling.
+        const localUrl = URL.createObjectURL(file);
+        onChange({
+          ...value,
+          pdfUrl: localUrl,
+          mediaType: kind === "image" ? "image" : "pdf",
+          sourceKind: kind,
+          sourceFileName: file.name,
+          zones: [],
+          lampposts: [],
+        });
+      } else {
+        // CAD (DWG/DXF): no browser preview yet — store the file reference and
+        // show a placeholder; annotation activates once a preview image exists.
+        onChange({
+          ...value,
+          pdfUrl: "",
+          mediaType: "pdf",
+          sourceKind: kind,
+          sourceFileName: file.name,
+          zones: [],
+          lampposts: [],
+          previewImage: "",
+        });
+      }
     } catch (err) {
       console.error("Upload failed:", err);
     }
@@ -236,11 +310,33 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
   };
 
   if (!value.pdfUrl) {
+    // In embedded mode the parent owns the file, so it renders its own empty state.
+    if (embedded) return null;
+    // Stored CAD file: no preview available yet, but the file travels with the request.
+    if (value.sourceKind === "dwg" || value.sourceKind === "dxf") {
+      return (
+        <div className="border rounded-lg p-6 text-center space-y-3">
+          <p className="text-sm font-medium">📐 {value.sourceFileName}</p>
+          <p className="text-xs text-muted-foreground">
+            {l(
+              "Fichier CAO enregistré (aperçu bientôt disponible via une image générée). Les annotations seront alors identiques aux PDF.",
+              "CAD file stored (preview coming via a generated image). Annotation will then work exactly like PDFs.",
+            )}
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, sourceKind: undefined, sourceFileName: undefined })}>
+            {l("Changer de fichier", "Change file")}
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="border-2 border-dashed rounded-lg p-8 text-center">
         <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground mb-3">{l("Télécharger un plan PDF", "Upload a PDF plan")}</p>
-        <Input type="file" accept=".pdf" onChange={handleUpload} disabled={uploading} className="max-w-xs mx-auto" />
+        <p className="text-sm text-muted-foreground mb-3">
+          {l("Télécharger un plan (PDF, image ou CAO)", "Upload a plan (PDF, image or CAD)")}
+        </p>
+        <Input type="file" accept={PROJECT_DOCUMENT_ACCEPT} onChange={handleUpload} disabled={uploading} className="max-w-xs mx-auto" />
+        <p className="text-xs text-muted-foreground mt-2">PDF · JPG · JPEG · PNG · DWG · DXF</p>
       </div>
     );
   }
@@ -311,9 +407,11 @@ const PdfZoneEditor = ({ value, onChange, lang = "en" }: Props) => {
             </Button>
           </div>
         )}
-        <Button type="button" size="sm" variant="outline" onClick={() => { setLassoPath([]); onChange({ ...value, pdfUrl: "", zones: [], lampposts: [] }); }}>
-          {l("Changer le PDF", "Change PDF")}
-        </Button>
+        {!embedded && (
+          <Button type="button" size="sm" variant="outline" onClick={() => { setLassoPath([]); onChange({ ...value, pdfUrl: "", sourceKind: undefined, sourceFileName: undefined, zones: [], lampposts: [] }); }}>
+            {l("Changer le fichier", "Change file")}
+          </Button>
+        )}
       </div>
 
       {/* Canvas */}
