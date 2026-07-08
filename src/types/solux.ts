@@ -1,3 +1,5 @@
+import { uid } from "@/lib/utils";
+
 export type MapArea = {
   id: string;
   type: "polygon" | "rectangle";
@@ -52,6 +54,8 @@ export type PdfZoneValue = {
   // shows a stored-file placeholder instead of the annotation canvas.
   sourceKind?: ProjectDocumentKind;
   sourceFileName?: string;
+  // Permanent storage URL of the original file, set at submit time (C4).
+  fileUrl?: string;
   viewState?: {
     page: number;
     zoom: number;
@@ -154,6 +158,8 @@ export type ProfileLightingConfig = {
   recommendProduct: boolean;
   family: string;
   product: string;
+  // Product-level CCT (per profile) — deliberately NOT per road segment.
+  cct: string;
   height: string; // "8" fixed or "5-8" range (see isHeightRange)
   spacing: string; // m
   arrangement: LightingSetup["arrangement"] | "";
@@ -167,6 +173,7 @@ export const createDefaultProfileConfig = (): ProfileLightingConfig => ({
   recommendProduct: false,
   family: "",
   product: "",
+  cct: "4000K",
   height: "",
   spacing: "",
   arrangement: "",
@@ -194,7 +201,7 @@ export type ProfileSegment = {
 };
 
 export const createDefaultProfileSegment = (kind: string = "main_road"): ProfileSegment => ({
-  id: crypto.randomUUID(),
+  id: uid(),
   kind,
   label: "",
   avgLux: "",
@@ -225,6 +232,9 @@ export type ProjectDocument = {
   config: ProfileLightingConfig;
   segments: ProfileSegment[];
   notes: string;
+  // Set at submit time when the original file is uploaded to storage (C4);
+  // lets the Study Lab download the customer's actual drawing.
+  fileUrl?: string;
 };
 
 export const PROJECT_DOCUMENT_ACCEPT = ".pdf,.png,.jpg,.jpeg,.dwg,.dxf";
@@ -286,9 +296,9 @@ export const BOOST_DURATION_OPTIONS = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300
 export const DETECTION_ESTIMATE_OPTIONS = [20, 50, 100, 200, 300, 500, 1000];
 
 export const createDefaultLightingSegments = (): LightingSegment[] => ([
-  { id: crypto.randomUUID(), mode: "sensor", hours: 4, min: 30, max: 100, boostDurationS: 30, estimatedDetections: 100 },
-  { id: crypto.randomUUID(), mode: "fixed", hours: 4, intensity: 60 },
-  { id: crypto.randomUUID(), mode: "fixed", hours: 4, intensity: 100 },
+  { id: uid(), mode: "sensor", hours: 4, min: 30, max: 100, boostDurationS: 30, estimatedDetections: 100 },
+  { id: uid(), mode: "fixed", hours: 4, intensity: 60 },
+  { id: uid(), mode: "fixed", hours: 4, intensity: 100 },
 ]);
 
 // --- Mounting heights: fixed value or an allowed range ---

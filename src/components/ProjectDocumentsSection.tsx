@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
+import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,9 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Upload, Trash2, Plus, RefreshCw, FileText, Image as ImageIcon, Box,
-  Eye, EyeOff, MessageSquareText,
+  Eye, EyeOff, MessageSquareText, MapPin, Sparkles, Copy, AlertTriangle,
 } from "lucide-react";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
+import ConfirmButton from "@/components/ConfirmButton";
 import HeightField from "@/components/HeightField";
 import LightingProgramTable from "@/components/LightingProgramTable";
 import StepHeader from "@/components/StepHeader";
@@ -52,12 +54,16 @@ const emptyAnnotation = (file: File, kind: ProjectDocumentKind): PdfZoneValue =>
 
 // One upload = one file group with a single default cross-section profile.
 // Additional profiles for the SAME drawing are added via addCrossSection below.
+// N1: name the default profile after the file so several files uploaded at once
+// get distinct names (they were all "Section 1"). Added cross-sections of the
+// SAME file are still numbered "Section 2/3…" under that file's group.
+const fileBaseName = (name: string) => name.replace(/\.[^./\\]+$/, "").trim() || "Section 1";
 const buildDocument = (file: File): ProjectDocument => {
   const kind = documentKindFromFile(file);
   return {
-    id: crypto.randomUUID(),
-    fileGroupId: crypto.randomUUID(),
-    profileName: "Section 1",
+    id: uid(),
+    fileGroupId: uid(),
+    profileName: fileBaseName(file.name),
     fileName: file.name,
     kind,
     uploadedAt: new Date().toISOString(),
@@ -79,6 +85,14 @@ const KIND_META: Record<ProjectDocumentKind, { icon: typeof FileText; labelEn: s
   dxf: { icon: Box, labelEn: "CAD · DXF", labelFr: "CAO · DXF" },
 };
 
+// F2 — uniformity and maintenance factor are ratios: clamp to [0, 1].
+const clamp01 = (v: string): string => {
+  if (v === "") return "";
+  const n = parseFloat(v.replace(",", "."));
+  if (isNaN(n)) return "";
+  return String(Math.min(1, Math.max(0, n)));
+};
+
 const Chip = ({ children }: { children: React.ReactNode }) => (
   <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground whitespace-nowrap">
     {children}
@@ -89,7 +103,9 @@ const Chip = ({ children }: { children: React.ReactNode }) => (
 const programShort = (p: ProfileProgram, l: (fr: string, en: string) => string) =>
   `${p.nightHours}h · ${p.segments.length} ${l("périodes", "periods")}${p.morningTimeH > 0 ? ` · 🌅 ${p.morningTimeH}h` : ""}`;
 
-const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, lang = "en" }: Props) => {
+// memo — with stable parent callbacks (P1), typing in unrelated form sections
+// no longer re-renders this whole module.
+const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ documents, onChange, notes, onNotesChange, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const [dragging, setDragging] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -135,9 +151,11 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
   // "Add Cross-Section Profile": a new fully independent profile referencing
   // the SAME uploaded drawing (shared blob URL, fresh annotations/levels/config).
   const addCrossSection = (source: ProjectDocument) => {
-    const siblings = documents.filter((d) => d.fileGroupId === source.fileGroupId);
+    // F1: read the LIVE list — with the stale prop, rapid clicks in one tick
+    // all computed the same sibling count and produced duplicate names.
+    const siblings = docsRef.current.filter((d) => d.fileGroupId === source.fileGroupId);
     const doc: ProjectDocument = {
-      id: crypto.randomUUID(),
+      id: uid(),
       fileGroupId: source.fileGroupId,
       profileName: `Section ${siblings.length + 1}`,
       fileName: source.fileName,
@@ -164,6 +182,36 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
     next.splice(lastIdx + 1, 0, doc);
     commit(next);
     setSelectedId(doc.id);
+  };
+
+  // F4 — true "Duplicate profile": deep-clones the WHOLE profile (levels,
+  // product request, program, notes) with fresh ids, sharing the same drawing.
+  const duplicateDoc = (source: ProjectDocument) => {
+    const clone: ProjectDocument = {
+      ...source,
+      id: uid(),
+      profileName: `${source.profileName || "Section"} (copy)`,
+      annotation: {
+        ...source.annotation,
+        zones: source.annotation.zones.map((z) => ({ ...z, id: uid(), paths: z.paths.map((p) => ({ ...p })) })),
+        lampposts: (source.annotation.lampposts ?? []).map((lp) => ({ ...lp, id: uid() })),
+      },
+      config: {
+        ...source.config,
+        optimize: { ...source.config.optimize },
+        program: {
+          ...source.config.program,
+          segments: source.config.program.segments.map((s) => ({ ...s, id: uid() })),
+        },
+      },
+      segments: source.segments.map((s) => ({ ...s, id: uid() })),
+    };
+    const cur = docsRef.current;
+    const idx = cur.findIndex((d) => d.id === source.id);
+    const next = [...cur];
+    next.splice(idx + 1, 0, clone);
+    commit(next);
+    setSelectedId(clone.id);
   };
 
   const updateDoc = (id: string, updates: Partial<ProjectDocument>) =>
@@ -205,7 +253,7 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
       });
       const additions = source.segments
         .filter((s) => !used.has(s.id))
-        .map((s) => ({ ...s, id: crypto.randomUUID() }));
+        .map((s) => ({ ...s, id: uid() }));
       return { ...target, segments: [...updated, ...additions] };
     });
   };
@@ -238,7 +286,7 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
       kind,
       uploadedAt: new Date().toISOString(),
       annotation: emptyAnnotation(file, kind),
-      fileGroupId: crypto.randomUUID(),
+      fileGroupId: uid(),
     });
   };
 
@@ -407,9 +455,16 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                             <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${active ? "bg-primary" : "bg-muted-foreground/30"}`} />
                             <span className="font-medium">{doc.profileName || l("Sans nom", "Untitled")}</span>
                             <span className="ml-auto hidden md:flex items-center gap-1.5">
+                              {/* U2 — completeness cue: flag profiles with no levels entered */}
+                              {!doc.segments.some((s) => s.avgLux || s.minLux || s.uniformity) && (
+                                <Chip>
+                                  <AlertTriangle className="h-3 w-3 mr-1 text-amber-600" />
+                                  {l("niveaux vides", "no levels")}
+                                </Chip>
+                              )}
                               <Chip>{doc.segments.length} {l("segment(s)", "segment(s)")}</Chip>
                               {doc.config.recommendProduct
-                                ? <Chip>✨ {l("Reco Study Lab", "Study Lab pick")}</Chip>
+                                ? <Chip><Sparkles className="h-3 w-3 mr-1" />{l("Reco Study Lab", "Study Lab pick")}</Chip>
                                 : doc.config.product && <Chip>{doc.config.product}</Chip>}
                               {doc.config.height && !doc.config.optimize?.height && <Chip>{formatHeight(doc.config.height, lang)}</Chip>}
                             </span>
@@ -434,7 +489,8 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
               while scrolling. Opaque bg so content doesn't show through. */}
           <div className="sticky top-0 z-40 flex flex-wrap items-center gap-3 p-3 border-b rounded-t-lg bg-card/95 backdrop-blur shadow-sm">
             <span className="flex items-center gap-1.5 rounded-md bg-primary/10 px-2 py-1 text-sm font-semibold text-primary">
-              📍 {selected.profileName || l("Sans nom", "Untitled")}
+              <MapPin className="h-3.5 w-3.5" />
+              {selected.profileName || l("Sans nom", "Untitled")}
               {focusedSeg && (
                 <span className="text-primary/70">→ {segDisplayName(focusedSeg)}</span>
               )}
@@ -455,12 +511,25 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                   {showPlan[selected.id] ? l("Masquer le plan", "Hide plan") : l("Voir le plan", "Show plan")}
                 </Button>
               )}
+              {/* F4 — full deep clone (levels + product + program + notes) */}
+              <Button type="button" size="sm" variant="outline" onClick={() => duplicateDoc(selected)}>
+                <Copy className="h-4 w-4 mr-1" /> {l("Dupliquer", "Duplicate")}
+              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => { replaceTargetId.current = selected.id; replaceInputRef.current?.click(); }}>
                 <RefreshCw className="h-4 w-4 mr-1" /> {l("Remplacer", "Replace")}
               </Button>
-              <Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => removeDoc(selected.id)} aria-label={l("Supprimer", "Delete")}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {/* U4 — deleting a whole profile is irreversible: confirm first */}
+              <ConfirmButton
+                title={l("Supprimer ce profil ?", "Delete this profile?")}
+                description={`${selected.profileName || l("Sans nom", "Untitled")} — ${l("niveaux, produit, programme et notes seront perdus.", "its levels, product, program and notes will be lost.")}`}
+                confirmLabel={l("Supprimer", "Delete")}
+                cancelLabel={l("Annuler", "Cancel")}
+                onConfirm={() => removeDoc(selected.id)}
+              >
+                <Button type="button" size="icon" variant="ghost" className="text-destructive hover:text-destructive" aria-label={l("Supprimer", "Delete")}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </ConfirmButton>
             </div>
           </div>
 
@@ -542,10 +611,11 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                             />
                           )}
                         </td>
-                        <td className="px-1 py-1"><Input className={cellInput} value={seg.avgLux} onChange={(e) => updateSegment(selected, seg.id, { avgLux: e.target.value })} placeholder="20" /></td>
-                        <td className="px-1 py-1"><Input className={cellInput} value={seg.minLux} onChange={(e) => updateSegment(selected, seg.id, { minLux: e.target.value })} placeholder="8" /></td>
-                        <td className="px-1 py-1"><Input className={cellInput} value={seg.uniformity} onChange={(e) => updateSegment(selected, seg.id, { uniformity: e.target.value })} placeholder="0.40" /></td>
-                        <td className="px-1 py-1"><Input className={cellInput} value={seg.maintenanceFactor} onChange={(e) => updateSegment(selected, seg.id, { maintenanceFactor: e.target.value })} placeholder="0.80" /></td>
+                        {/* F2 — numeric-only with engineering bounds (MF and U₀ ∈ [0,1]) */}
+                        <td className="px-1 py-1"><Input type="number" inputMode="decimal" min={0} step="0.5" className={cellInput} value={seg.avgLux} onChange={(e) => updateSegment(selected, seg.id, { avgLux: e.target.value })} placeholder="20" /></td>
+                        <td className="px-1 py-1"><Input type="number" inputMode="decimal" min={0} step="0.5" className={cellInput} value={seg.minLux} onChange={(e) => updateSegment(selected, seg.id, { minLux: e.target.value })} placeholder="8" /></td>
+                        <td className="px-1 py-1"><Input type="number" inputMode="decimal" min={0} max={1} step="0.05" className={cellInput} value={seg.uniformity} onChange={(e) => updateSegment(selected, seg.id, { uniformity: clamp01(e.target.value) })} placeholder="0.40" /></td>
+                        <td className="px-1 py-1"><Input type="number" inputMode="decimal" min={0} max={1} step="0.05" className={cellInput} value={seg.maintenanceFactor} onChange={(e) => updateSegment(selected, seg.id, { maintenanceFactor: clamp01(e.target.value) })} placeholder="0.80" /></td>
                         <td className="px-1 py-1">
                           <Select value={seg.roadClass} onValueChange={(v) => updateSegment(selected, seg.id, { roadClass: v })}>
                             <SelectTrigger className="h-8 border-0 bg-transparent focus:ring-1 focus:ring-primary"><SelectValue placeholder="—" /></SelectTrigger>
@@ -607,8 +677,8 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                   </div>
                 );
                 const Optimized = () => (
-                  <div className="flex h-10 items-center rounded-md border border-dashed bg-muted/20 px-3 text-xs text-muted-foreground">
-                    ✨ {l("Optimisé par le Study Lab", "Optimised by Study Lab")}
+                  <div className="flex h-10 items-center gap-1.5 rounded-md border border-dashed bg-muted/20 px-3 text-xs text-muted-foreground">
+                    <Sparkles className="h-3.5 w-3.5" /> {l("Optimisé par le Study Lab", "Optimised by Study Lab")}
                   </div>
                 );
                 return (
@@ -620,7 +690,8 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                         checked={selected.config.recommendProduct}
                         onCheckedChange={(v) => updateConfig(selected, { recommendProduct: !!v })}
                       />
-                      ✨ {l("Laisser le Study Lab recommander le meilleur produit", "Let the Study Lab recommend the best product")}
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      {l("Laisser le Study Lab recommander le meilleur produit", "Let the Study Lab recommend the best product")}
                     </label>
                     <div className="grid md:grid-cols-3 gap-3">
                     {!selected.config.recommendProduct && (
@@ -660,6 +731,19 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
                         </div>
                       </>
                     )}
+                    {/* Product-level CCT (deliberately not per road segment) */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">{l("Température de couleur (CCT)", "Color Temperature (CCT)")}</Label>
+                      <Select value={selected.config.cct} onValueChange={(v) => updateConfig(selected, { cct: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="2700K">2700K</SelectItem>
+                          <SelectItem value="3000K">3000K</SelectItem>
+                          <SelectItem value="4000K">4000K</SelectItem>
+                          <SelectItem value="5000K">5000K</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-1">
                       <FieldHead label={l("Hauteur de feu (m)", "Mounting Height (m)")} k="height" />
                       {opt.height ? <Optimized /> : (
@@ -764,6 +848,6 @@ const ProjectDocumentsSection = ({ documents, onChange, notes, onNotesChange, la
       </div>
     </div>
   );
-};
+});
 
 export default ProjectDocumentsSection;

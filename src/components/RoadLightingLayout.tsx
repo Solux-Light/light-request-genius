@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,7 @@ const Pole = () => (
   </div>
 );
 
-const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props) => {
+const RoadLightingLayout = memo(function RoadLightingLayout({ value, onChange, roadProfile, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const update = <K extends keyof LightingSetup>(key: K, val: LightingSetup[K]) => {
@@ -271,6 +272,6 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
       </div>
     </div>
   );
-};
+});
 
 export default RoadLightingLayout;

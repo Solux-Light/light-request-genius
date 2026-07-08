@@ -1,14 +1,17 @@
+import { memo } from "react";
 import { Button } from "@/components/ui/button";
+import { uid } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, Wand2 } from "lucide-react";
+import { Trash2, Plus, Wand2, Sunrise } from "lucide-react";
 import {
   ProfileProgram,
   LightingSegment,
   BOOST_DURATION_OPTIONS,
   DETECTION_ESTIMATE_OPTIONS,
 } from "@/types/solux";
+import { rescaleSegmentsToTotal } from "@/lib/program";
 
 // Compact, data-entry-oriented lighting program editor for profiles.
 // Engineers know the values they want: direct numeric inputs in a dense table,
@@ -21,15 +24,13 @@ interface Props {
   lang?: "fr" | "en";
 }
 
-const snap30 = (h: number) => Math.round(h * 2) / 2;
-
 const segColor = (seg: LightingSegment) => {
   if (seg.mode === "sensor") return "rgb(137, 250, 140)";
   if ((seg.intensity ?? 100) === 100) return "#111";
   return "rgb(170, 173, 184)";
 };
 
-const LightingProgramTable = ({ value, onChange, lang = "en" }: Props) => {
+const LightingProgramTable = memo(function LightingProgramTable({ value, onChange, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const patch = (p: Partial<ProfileProgram>) => onChange({ ...value, ...p });
@@ -40,22 +41,17 @@ const LightingProgramTable = ({ value, onChange, lang = "en" }: Props) => {
   const total = value.segments.reduce((s, x) => s + (x.hours || 0), 0);
   const mismatch = Math.abs(total - programTarget) >= 0.25;
 
+  // Q3 — single shared implementation (lib/program) for the proportional fit.
   const rescale = () => {
     if (total <= 0 || value.segments.length === 0) return;
-    const scaled = value.segments.map((s) => ({ ...s, hours: Math.max(0.5, snap30((s.hours / total) * programTarget)) }));
-    const drift = Math.round((programTarget - scaled.reduce((s, x) => s + x.hours, 0)) * 100) / 100;
-    if (drift !== 0) {
-      const last = scaled.length - 1;
-      scaled[last].hours = Math.max(0.5, snap30(scaled[last].hours + drift));
-    }
-    patch({ segments: scaled });
+    patch({ segments: rescaleSegmentsToTotal(value.segments, programTarget) });
   };
 
   const addPeriod = () =>
     patch({
       segments: [
         ...value.segments,
-        { id: crypto.randomUUID(), mode: "fixed", hours: 1, intensity: 100 },
+        { id: uid(), mode: "fixed", hours: 1, intensity: 100 },
       ],
     });
 
@@ -80,7 +76,7 @@ const LightingProgramTable = ({ value, onChange, lang = "en" }: Props) => {
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">🌅 Morning Time (h)</Label>
+          <Label className="text-xs flex items-center gap-1"><Sunrise className="h-3.5 w-3.5 text-amber-600" /> Morning Time (h)</Label>
           <Input
             type="number" step="0.5" min={0} max={6}
             value={value.morningTimeH}
@@ -246,6 +242,6 @@ const LightingProgramTable = ({ value, onChange, lang = "en" }: Props) => {
       </div>
     </div>
   );
-};
+});
 
 export default LightingProgramTable;

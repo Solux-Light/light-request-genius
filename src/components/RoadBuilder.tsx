@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { memo, useState } from "react";
+import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +13,7 @@ interface Props {
   lang?: "fr" | "en";
 }
 
-const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
+const RoadBuilder = memo(function RoadBuilder({ value, onChange, lang = "en" }: Props) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
 
@@ -20,7 +21,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const addSegment = () => {
     onChange([...value, {
-      id: crypto.randomUUID(),
+      id: uid(),
       type: "lane",
       width: 3.5,
       direction: "forward",
@@ -37,7 +38,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const duplicateSegment = (seg: RoadSegment) => {
     const idx = value.findIndex((s) => s.id === seg.id);
-    const copy = { ...seg, id: crypto.randomUUID() };
+    const copy = { ...seg, id: uid() };
     const next = [...value];
     next.splice(idx + 1, 0, copy);
     onChange(next);
@@ -46,7 +47,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
   const mirrorProfile = () => {
     const mirrored = [...value].reverse().map((s) => ({
       ...s,
-      id: crypto.randomUUID(),
+      id: uid(),
       direction: s.direction === "forward" ? "backward" as const : s.direction === "backward" ? "forward" as const : s.direction,
     }));
     onChange([...value, ...mirrored]);
@@ -204,6 +205,6 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
       )}
     </div>
   );
-};
+});
 
 export default RoadBuilder;

@@ -418,11 +418,13 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                       <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "3px 6px", fontWeight: 600, width: "25%" }}>{l("Produit demandé", "Requested Product")}</td>
                         {/* No optic — optics are chosen by the Study Lab during optimisation. */}
-                        <td style={{ padding: "3px 6px" }} colSpan={3}>
+                        <td style={{ padding: "3px 6px" }}>
                           {cfg.recommendProduct
                             ? `✨ ${l("Le Study Lab recommandera la meilleure solution", "Study Lab will recommend the best solution")}`
                             : [cfg.family, cfg.product].filter(Boolean).join(" / ") || "—"}
                         </td>
+                        <td style={{ padding: "3px 6px", fontWeight: 600 }}>CCT</td>
+                        <td style={{ padding: "3px 6px" }}>{cfg.cct || "—"}</td>
                       </tr>
                       {(() => {
                         // Per-parameter: manual constraint or Study Lab optimisation.

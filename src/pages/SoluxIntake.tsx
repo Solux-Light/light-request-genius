@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { uid } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Home, Send, Globe, MessageSquareText } from "lucide-react";
 import GoogleMapSection from "@/components/GoogleMapSection";
@@ -23,10 +28,13 @@ import ProjectDocumentsSection from "@/components/ProjectDocumentsSection";
 import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData, LightingSegment } from "@/types/solux";
+import ProjectsMenu from "@/components/ProjectsMenu";
+import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData, ProjectDocument } from "@/types/solux";
 import { saveSubmission } from "@/lib/submissions";
 import { geocodeCity, resolveWinterSolsticeDusk } from "@/lib/solarNight";
 import { buildProjectKml, downloadKml } from "@/lib/kml";
+import { rescaleSegmentsToTotal, snapHalf } from "@/lib/program";
+import { saveDraft, loadDraft, clearDraft, DraftEnvelope } from "@/lib/draft";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -54,25 +62,16 @@ const mirrorToZoneData = (f: SoluxForm): ZoneLightingData => ({
   alternativeDetails: f.alternativeDetails,
 });
 
+// N2/F3 — does the given mode hold real work worth confirming before we clear it?
+const hasRoadData = (f: SoluxForm) =>
+  f.roadProfile.length > 0 || f.roadDocuments.length > 0 ||
+  Object.keys(f.roadSegmentLighting).length > 0 || !!f.roadProfileNotes;
+const hasZoneData = (f: SoluxForm) =>
+  f.areas.length > 0 || f.pdfPlan.zones.length > 0 || Object.keys(f.zoneLightingData).length > 0;
+
 const NIGHT_MIN_H = 4;
 const NIGHT_MAX_H = 24; // matches the Lighting Program table bounds
-const snap30 = (h: number) => Math.round(h * 2) / 2;
-const clampNightHours = (h: number) => Math.min(NIGHT_MAX_H, Math.max(NIGHT_MIN_H, snap30(h)));
-
-// Rescale the program's period durations proportionally so they still sum to the
-// new night length (mirrors the "Fit" rescale inside LightingProgramTable).
-const scaleSegmentsToTotal = (segs: LightingSegment[], total: number): LightingSegment[] => {
-  const sum = segs.reduce((s, x) => s + x.hours, 0);
-  if (sum <= 0) return segs.map((s) => ({ ...s }));
-  const scaled = segs.map((s) => ({ ...s, hours: snap30((s.hours / sum) * total) }));
-  const newSum = scaled.reduce((s, x) => s + x.hours, 0);
-  const diff = Math.round((total - newSum) * 100) / 100;
-  if (diff !== 0 && scaled.length) {
-    const last = scaled.length - 1;
-    scaled[last].hours = Math.max(0.5, snap30(scaled[last].hours + diff));
-  }
-  return scaled;
-};
+const clampNightHours = (h: number) => Math.min(NIGHT_MAX_H, Math.max(NIGHT_MIN_H, snapHalf(h)));
 
 const SoluxIntake = () => {
   const { user, signOut } = useAuth();
@@ -82,9 +81,52 @@ const SoluxIntake = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [computingDusk, setComputingDusk] = useState(false);
+  // Export doc is mounted only while an export runs (P2 — it re-rendered the
+  // whole submission document on every keystroke before).
+  const [exportDocMounted, setExportDocMounted] = useState(false);
   const directExportRef = useRef<HTMLDivElement>(null);
 
   const l = useCallback((fr: string, en: string) => (lang === "fr" ? fr : en), [lang]);
+
+  // --- C1/U1: local autosave, restore banner, dirty-state exit guard ---
+  const [pendingDraft, setPendingDraft] = useState<DraftEnvelope | null>(() => loadDraft());
+  const dirtyRef = useRef(false);
+  const firstRenderRef = useRef(true);
+  const autosaveWarnedRef = useRef(false);
+  useEffect(() => {
+    if (firstRenderRef.current) { firstRenderRef.current = false; return; }
+    // While the restore banner is open, don't clobber the stored draft with
+    // the pristine form the user hasn't chosen yet.
+    if (pendingDraft) return;
+    dirtyRef.current = true;
+    const t = setTimeout(() => {
+      const outcome = saveDraft(form);
+      // N3: autosave used to fail silently when storage was full. Warn once so
+      // the user knows to save the project / trim attachments; reset once it
+      // recovers so a later failure warns again.
+      if (outcome === "failed" && !autosaveWarnedRef.current) {
+        autosaveWarnedRef.current = true;
+        toast({
+          title: l("Sauvegarde automatique en pause", "Autosave paused"),
+          description: l(
+            "Le stockage du navigateur est plein. Enregistrez le projet ou réduisez les pièces jointes.",
+            "Browser storage is full. Save the project or reduce attachments.",
+          ),
+          variant: "destructive",
+        });
+      } else if (outcome !== "failed") {
+        autosaveWarnedRef.current = false;
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [form, pendingDraft, toast, l]);
+  useEffect(() => {
+    const h = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current) { e.preventDefault(); e.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, []);
 
   const salesName = user?.email?.split("@")[0] || "";
   const nowStr = new Date().toLocaleString();
@@ -92,6 +134,106 @@ const SoluxIntake = () => {
   const onChange = useCallback(<K extends keyof SoluxForm>(key: K, val: SoluxForm[K]) => {
     setForm((f) => ({ ...f, [key]: val }));
   }, []);
+
+  const restorePendingDraft = useCallback(() => {
+    setPendingDraft((draft) => {
+      if (draft) {
+        setForm(draft.form);
+        toast({
+          title: l("Brouillon restauré", "Draft restored"),
+          description: l(
+            "Les fichiers téléchargés doivent être re-téléchargés (le navigateur ne conserve pas les fichiers).",
+            "Uploaded files must be re-uploaded (the browser can't keep file bytes between sessions).",
+          ),
+        });
+      }
+      return null;
+    });
+  }, [toast, l]);
+
+  const discardPendingDraft = useCallback(() => {
+    clearDraft();
+    setPendingDraft(null);
+  }, []);
+
+  // U1 — load a saved project from the local library.
+  const handleLoadProject = useCallback((loaded: SoluxForm) => {
+    setForm(loaded);
+    toast({
+      title: l("Projet chargé", "Project loaded"),
+      description: l("Fichiers à re-télécharger si nécessaire.", "Re-upload files where needed."),
+    });
+  }, [toast, l]);
+
+  // N2/F3 — project-type switch clears the OTHER mode's data so it isn't kept
+  // in state, autosaved and submitted. Confirm first when that mode holds work.
+  const [pendingType, setPendingType] = useState<null | "zone" | "road">(null);
+  const doSwitchType = useCallback((target: "zone" | "road") => {
+    setForm((current) => {
+      if (target === "zone") {
+        // leaving road — drop road-only data, revoking its blob previews
+        current.roadDocuments.forEach((d) => {
+          if (d.annotation.pdfUrl?.startsWith("blob:")) URL.revokeObjectURL(d.annotation.pdfUrl);
+        });
+        return {
+          ...current,
+          projectType: "zone",
+          roadProfile: [],
+          roadLighting: { ...defaultLightingSetup },
+          roadSegmentLighting: {},
+          roadDocuments: [],
+          roadProfileNotes: "",
+          roadInputMode: "builder",
+        };
+      }
+      // leaving zone — drop zone-only geometry/levels (the shared program fields stay)
+      if (current.pdfPlan.pdfUrl?.startsWith("blob:")) URL.revokeObjectURL(current.pdfPlan.pdfUrl);
+      return {
+        ...current,
+        projectType: "road",
+        areas: [],
+        lampposts: [],
+        pdfPlan: { ...defaultForm.pdfPlan },
+        zoneLightingData: {},
+        assignedArea: "",
+        multiProduct: false,
+        productAssignments: [],
+      };
+    });
+  }, []);
+  const requestSwitchType = (target: "zone" | "road") => {
+    if (form.projectType === target) return;
+    const leavingHasData = form.projectType === "road" ? hasRoadData(form) : hasZoneData(form);
+    if (leavingHasData) setPendingType(target);
+    else doSwitchType(target);
+  };
+
+  // --- P1: stable handlers + memoized value objects so the heavy child
+  // sections can be memo()-ized and skip re-renders while you type elsewhere.
+  const handleRoadDocumentsChange = useCallback((docs: ProjectDocument[]) => onChange("roadDocuments", docs), [onChange]);
+  const handleRoadProfileNotesChange = useCallback((v: string) => onChange("roadProfileNotes", v), [onChange]);
+  const handlePdfPlanChange = useCallback((val: SoluxForm["pdfPlan"]) => onChange("pdfPlan", val), [onChange]);
+  const handleRoadProfileChange = useCallback((v: SoluxForm["roadProfile"]) => onChange("roadProfile", v), [onChange]);
+  const handleRoadLightingChange = useCallback((v: SoluxForm["roadLighting"]) => onChange("roadLighting", v), [onChange]);
+  const mapValue = useMemo(() => ({
+    address: form.address,
+    location: form.location,
+    areas: form.areas,
+    lampposts: form.lampposts,
+  }), [form.address, form.location, form.areas, form.lampposts]);
+  const zoneProgram = useMemo(() => ({
+    nightHours: form.lightingNightHours,
+    morningTimeH: form.morningTimeH,
+    morningIntensityPct: form.morningIntensityPct,
+    segments: form.lightingSegments,
+  }), [form.lightingNightHours, form.morningTimeH, form.morningIntensityPct, form.lightingSegments]);
+
+  // P2 — mount the hidden export document only for the duration of an export.
+  const prepareExportDoc = useCallback(async () => {
+    setExportDocMounted(true);
+    await new Promise((r) => setTimeout(r, 150)); // let it paint before capture
+  }, []);
+  const cleanupExportDoc = useCallback(() => setExportDocMounted(false), []);
 
   const handleMapSectionChange = useCallback(
     (val: {
@@ -138,7 +280,13 @@ const SoluxIntake = () => {
     canonical.href = window.location.href;
   }, [lang, l]);
 
-  // Validation
+  // Validation — mode-aware (C2/C3):
+  // - Address comes from the zone map; road mode has no address input, so it
+  //   is only required for zone projects.
+  // - Product: zone validates the global product; Work-From-PDF-Profile
+  //   validates each profile (chosen product OR "Study Lab recommends");
+  //   road builder needs neither (the luminaire lives in the road layout).
+  const isProfilesMode = form.projectType === "road" && form.roadInputMode === "pdf_profile";
   const requiredErrors = useMemo(() => {
     const errs: string[] = [];
     const isNum = (v: string) => v !== "" && !isNaN(Number(v.replace(",", ".")));
@@ -146,12 +294,24 @@ const SoluxIntake = () => {
     if (!form.clientName) errs.push(l("Nom du client", "Client Name"));
     if (!form.locality) errs.push(l("Localité", "City/Location"));
     if (!form.country) errs.push(l("Pays", "Country"));
-    if (!form.address) errs.push(l("Adresse", "Project Address"));
-    if (!isNum(form.avgLux) && form.projectType === "zone") errs.push(l("Éclairement moyen", "Average Illuminance"));
-    if (!form.cct) errs.push(l("Température de couleur", "Color Temperature"));
-    if (!form.product) errs.push(l("Produit", "Product Selection"));
+    if (form.projectType === "zone") {
+      if (!form.address) errs.push(l("Adresse", "Project Address"));
+      if (!isNum(form.avgLux)) errs.push(l("Éclairement moyen", "Average Illuminance"));
+      if (!form.cct) errs.push(l("Température de couleur", "Color Temperature"));
+      if (!form.product) errs.push(l("Produit", "Product Selection"));
+    }
+    if (isProfilesMode) {
+      if (form.roadDocuments.length === 0) {
+        errs.push(l("Document du client (profil)", "Customer profile document"));
+      }
+      form.roadDocuments.forEach((d, i) => {
+        if (!d.config.recommendProduct && !d.config.product) {
+          errs.push(`${l("Produit", "Product")} — ${d.profileName || `${l("Profil", "Profile")} ${i + 1}`}`);
+        }
+      });
+    }
     return errs;
-  }, [form, l]);
+  }, [form, l, isProfilesMode]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,9 +323,31 @@ const SoluxIntake = () => {
       });
       return;
     }
+    // U2 — soft completeness nudge (non-blocking): profiles with no lighting
+    // levels at all are flagged; the Study Lab will otherwise assume defaults.
+    if (isProfilesMode) {
+      const emptyProfiles = form.roadDocuments
+        .filter((d) => !d.segments.some((s) => s.avgLux || s.minLux || s.uniformity))
+        .map((d) => d.profileName || d.fileName);
+      if (emptyProfiles.length > 0) {
+        toast({
+          title: l("Niveaux d'éclairage non renseignés", "Lighting levels not specified"),
+          description: `${emptyProfiles.join(", ")} — ${l("le Study Lab choisira les niveaux.", "the Study Lab will decide the levels.")}`,
+        });
+      }
+    }
     setSubmitting(true);
     try {
-      await saveSubmission(form, { salesName });
+      const result = await saveSubmission(form, { salesName });
+      if (result.fileUploadWarning) {
+        toast({
+          title: l("Fichiers non joints", "Files not attached"),
+          description: result.fileUploadWarning,
+        });
+      }
+      // The request is safely in the database — the local draft has done its job.
+      clearDraft();
+      dirtyRef.current = false;
       toast({
         title: l("Demande enregistrée", "Request Saved"),
         description: l("Votre demande a été transmise au bureau d'études.", "Your request has been sent to the design team."),
@@ -274,7 +456,7 @@ const SoluxIntake = () => {
 
       setForm((current) => {
         // Standard periods cover the night minus the fixed Morning Time block.
-        const scaled = scaleSegmentsToTotal(current.lightingSegments, Math.max(1, nightH - current.morningTimeH));
+        const scaled = rescaleSegmentsToTotal(current.lightingSegments, Math.max(1, nightH - current.morningTimeH));
         const next: SoluxForm = {
           ...current,
           location: current.location ?? loc!,
@@ -399,11 +581,13 @@ const SoluxIntake = () => {
               className="h-8"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
-            <h1 className="text-2xl md:text-3xl font-bold">
+            {/* I4 — scale down earlier so the title doesn't wrap awkwardly at mid widths */}
+            <h1 className="text-lg md:text-2xl lg:text-3xl font-bold leading-tight">
               {l("Solux – Formulaire d'étude d'éclairage", "Solux – Professional Lighting Study Request")}
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            <ProjectsMenu form={form} onLoad={handleLoadProject} lang={lang} />
             <Select value={lang} onValueChange={(v) => setLang(v as "fr" | "en")}>
               <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -421,6 +605,29 @@ const SoluxIntake = () => {
       {/* Main Form */}
       {/* Desktop-first: use widescreen real estate (was max-w-5xl / 1024px) */}
       <main className="max-w-7xl mx-auto px-4 py-8">
+        {/* C1 — pending draft restore banner */}
+        {pendingDraft && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
+            <span className="text-xl">🕘</span>
+            <div className="flex-1 min-w-[240px]">
+              <p className="text-sm font-medium">
+                {l("Un brouillon non envoyé a été retrouvé", "An unsent draft was found")}
+                {pendingDraft.savedAt && (
+                  <span className="text-muted-foreground font-normal"> · {new Date(pendingDraft.savedAt).toLocaleString()}</span>
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {l("Les fichiers devront être re-téléchargés.", "Files will need to be re-uploaded.")}
+              </p>
+            </div>
+            <Button type="button" size="sm" onClick={restorePendingDraft}>
+              {l("Restaurer", "Restore")}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={discardPendingDraft}>
+              {l("Ignorer", "Discard")}
+            </Button>
+          </div>
+        )}
         <div className="animate-fade-in">
           <Card>
             <CardContent className="p-6">
@@ -466,12 +673,7 @@ const SoluxIntake = () => {
                           ? "border-primary bg-primary/5"
                           : "border-input hover:border-primary/50"
                       }`}
-                      onClick={() => {
-                        onChange("projectType", "zone");
-                        onChange("roadProfile", []);
-                        onChange("roadLighting", { ...defaultLightingSetup });
-                        onChange("roadSegmentLighting", {});
-                      }}
+                      onClick={() => requestSwitchType("zone")}
                     >
                       <span className="text-2xl">💡</span>
                       <h3 className="font-semibold mt-2">{l("Éclairage de zone", "Area Lighting")}</h3>
@@ -484,13 +686,7 @@ const SoluxIntake = () => {
                           ? "border-primary bg-primary/5"
                           : "border-input hover:border-primary/50"
                       }`}
-                      onClick={() => {
-                        onChange("projectType", "road");
-                        onChange("assignedArea", "");
-                        onChange("avgLux", "");
-                        onChange("minLux", "");
-                        onChange("uniformity", "");
-                      }}
+                      onClick={() => requestSwitchType("road")}
                     >
                       <span className="text-2xl">🛣️</span>
                       <h3 className="font-semibold mt-2">{l("Éclairage routier", "Road & Street lighting Lighting")}</h3>
@@ -516,12 +712,7 @@ const SoluxIntake = () => {
                         <TabsContent value="map">
                           <GoogleMapSection
                             apiKey={GOOGLE_MAPS_API_KEY}
-                            value={{
-                              address: form.address,
-                              location: form.location,
-                              areas: form.areas,
-                              lampposts: form.lampposts,
-                            }}
+                            value={mapValue}
                             onChange={handleMapSectionChange}
                             onMapViewChange={handleMapViewChange}
                             lang={lang}
@@ -530,7 +721,7 @@ const SoluxIntake = () => {
                         <TabsContent value="pdf">
                           <PdfZoneEditor
                             value={form.pdfPlan}
-                            onChange={(val) => onChange("pdfPlan", val)}
+                            onChange={handlePdfPlanChange}
                             lang={lang}
                           />
                         </TabsContent>
@@ -591,15 +782,15 @@ const SoluxIntake = () => {
                       <div className="mt-4 grid md:grid-cols-4 gap-4">
                         <div className="space-y-2">
                           <Label>{l("Lux moyen minimum *", "Required Average Illuminance (lux) *")}</Label>
-                          <Input value={form.avgLux} onChange={(e) => syncAssignedZoneData({ avgLux: e.target.value })} placeholder="15" required />
+                          <Input type="number" inputMode="decimal" min={0} step="0.5" value={form.avgLux} onChange={(e) => syncAssignedZoneData({ avgLux: e.target.value })} placeholder="15" required />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("Uniformité minimale (optionnel)", "Minimum Uniformity Ratio (optional)")}</Label>
-                          <Input value={form.uniformity} onChange={(e) => syncAssignedZoneData({ uniformity: e.target.value })} placeholder="0.6" />
+                          <Input type="number" inputMode="decimal" min={0} max={1} step="0.05" value={form.uniformity} onChange={(e) => syncAssignedZoneData({ uniformity: e.target.value })} placeholder="0.6" />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("Lux minimum (optionnel)", "Minimum Lux (optional)")}</Label>
-                          <Input value={form.minLux} onChange={(e) => syncAssignedZoneData({ minLux: e.target.value })} placeholder="4" />
+                          <Input type="number" inputMode="decimal" min={0} step="0.5" value={form.minLux} onChange={(e) => syncAssignedZoneData({ minLux: e.target.value })} placeholder="4" />
                         </div>
                         <div className="space-y-2">
                           <Label>{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
@@ -635,14 +826,14 @@ const SoluxIntake = () => {
                     <TabsContent value="builder" className="space-y-8 mt-0">
                     <section>
                       <h3 className="text-lg font-semibold mb-4">{l("Construction de route", "Road Builder")}</h3>
-                      <RoadBuilder value={form.roadProfile} onChange={(v) => onChange("roadProfile", v)} lang={lang} />
+                      <RoadBuilder value={form.roadProfile} onChange={handleRoadProfileChange} lang={lang} />
                     </section>
 
                     <section>
                       <h3 className="text-lg font-semibold mb-4">{l("Configuration d'éclairage routier", "Road Lighting Layout")}</h3>
                       <RoadLightingLayout
                         value={form.roadLighting}
-                        onChange={(v) => onChange("roadLighting", v)}
+                        onChange={handleRoadLightingChange}
                         roadProfile={form.roadProfile}
                         lang={lang}
                       />
@@ -725,9 +916,9 @@ const SoluxIntake = () => {
                     <TabsContent value="pdf_profile" className="mt-0">
                       <ProjectDocumentsSection
                         documents={form.roadDocuments}
-                        onChange={(docs) => onChange("roadDocuments", docs)}
+                        onChange={handleRoadDocumentsChange}
                         notes={form.roadProfileNotes}
-                        onNotesChange={(v) => onChange("roadProfileNotes", v)}
+                        onNotesChange={handleRoadProfileNotesChange}
                         lang={lang}
                       />
                     </TabsContent>
@@ -736,7 +927,10 @@ const SoluxIntake = () => {
 
                 <Separator />
 
-                {/* Section 4: Product Selection */}
+                {/* Section 4: Product Selection — hidden in Work-From-PDF-Profile
+                    mode, where the requested product lives on each profile (U3). */}
+                {!isProfilesMode && (
+                <>
                 <section>
                   <div className="mb-4">
                     <StepHeader n={++stepNo} title={l("Sélection du produit", "Product Selection")} hint={l("Choisissez le produit Solux adapté.", "Choose the appropriate Solux product.")} />
@@ -775,6 +969,8 @@ const SoluxIntake = () => {
                 </section>
 
                 <Separator />
+                </>
+                )}
 
                 {/* Section 5: Lighting Scenario — hidden in Work-From-PDF-Profile
                     mode, where each cross-section profile owns its own program. */}
@@ -820,12 +1016,7 @@ const SoluxIntake = () => {
                   {/* Standard program module (same as the profile workflow) —
                       one implementation across the whole application. */}
                   <LightingProgramTable
-                    value={{
-                      nightHours: form.lightingNightHours,
-                      morningTimeH: form.morningTimeH,
-                      morningIntensityPct: form.morningIntensityPct,
-                      segments: form.lightingSegments,
-                    }}
+                    value={zoneProgram}
                     onChange={(next) => syncAssignedZoneData({
                       lightingSegments: next.segments,
                       lightingNightHours: next.nightHours,
@@ -840,7 +1031,9 @@ const SoluxIntake = () => {
                 </>
                 )}
 
-                {/* Section 6: Multi-Product Toggle */}
+                {/* Section 6: Multi-Product Toggle — zone-only concept (U3) */}
+                {form.projectType === "zone" && (
+                <>
                 <section>
                   <div className="bg-[hsl(var(--callout))] rounded-lg p-4 md:p-6">
                     <div className="flex items-center justify-between mb-2">
@@ -857,7 +1050,7 @@ const SoluxIntake = () => {
                           onChange("multiProduct", v);
                           if (v && form.productAssignments.length === 0) {
                             onChange("productAssignments", [{
-                              id: crypto.randomUUID(),
+                              id: uid(),
                               zone: "",
                               product: form.product || "SSLXPRO",
                             }]);
@@ -903,6 +1096,8 @@ const SoluxIntake = () => {
                 </section>
 
                 <Separator />
+                </>
+                )}
 
                 {/* Section 7: Additional Information */}
                 <section>
@@ -986,6 +1181,8 @@ const SoluxIntake = () => {
                       contentRef={directExportRef}
                       filename={`${form.projectName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "document"}.pdf`}
                       lang={lang}
+                      prepare={prepareExportDoc}
+                      cleanup={cleanupExportDoc}
                     />
                     <PdfPreviewModal
                       form={form}
@@ -1026,17 +1223,43 @@ const SoluxIntake = () => {
           </Card>
         </div>
 
-        {/* Hidden PDF document for direct export */}
-        <div style={{ position: "absolute", left: -9999 }}>
-          <PdfSubmissionDocument
-            ref={directExportRef}
-            form={form}
-            salesName={salesName}
-            nowStr={nowStr}
-            lang={lang}
-            mapPreviewMode="placeholder"
-          />
-        </div>
+        {/* Hidden PDF document — mounted only while an export runs (P2), so
+            typing in the form doesn't re-render the whole submission document. */}
+        {exportDocMounted && (
+          <div style={{ position: "absolute", left: -9999 }}>
+            <PdfSubmissionDocument
+              ref={directExportRef}
+              form={form}
+              salesName={salesName}
+              nowStr={nowStr}
+              lang={lang}
+              mapPreviewMode="placeholder"
+            />
+          </div>
+        )}
+
+        {/* N2/F3 — confirm before a project-type switch discards the other mode's work. */}
+        <AlertDialog open={pendingType !== null} onOpenChange={(o) => { if (!o) setPendingType(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{l("Changer de type de projet ?", "Change project type?")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {form.projectType === "road"
+                  ? l("Vos données routières (profils, segments, notes) seront effacées.", "Your road work (profiles, road segments, notes) will be cleared.")
+                  : l("Vos données de zone (carte, zones dessinées, niveaux) seront effacées.", "Your zone work (map, drawn zones, levels) will be cleared.")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{l("Annuler", "Cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => { if (pendingType) doSwitchType(pendingType); setPendingType(null); }}
+              >
+                {l("Changer et effacer", "Switch & clear")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   );

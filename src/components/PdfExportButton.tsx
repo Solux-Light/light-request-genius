@@ -6,12 +6,25 @@ interface Props {
   contentRef: React.RefObject<HTMLDivElement>;
   filename?: string;
   lang?: "fr" | "en";
+  // Optional lifecycle: `prepare` runs before capture (e.g. mount the hidden
+  // document on demand — P2) and `cleanup` runs after, success or failure.
+  prepare?: () => Promise<void> | void;
+  cleanup?: () => void;
 }
 
-const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en" }: Props) => {
+const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en", prepare, cleanup }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const handleExport = async () => {
+    try {
+      await prepare?.();
+      await runExport();
+    } finally {
+      cleanup?.();
+    }
+  };
+
+  const runExport = async () => {
     if (!contentRef.current) return;
     await document.fonts.ready;
     // Wait for all images (including static map) to load

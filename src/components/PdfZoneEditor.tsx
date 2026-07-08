@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import ConfirmButton from "@/components/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS, PROJECT_DOCUMENT_ACCEPT, documentKindFromFile, isAnnotatableKind } from "@/types/solux";
@@ -14,7 +16,7 @@ interface Props {
   embedded?: boolean;
 }
 
-const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props) => {
+const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en", embedded = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -251,7 +253,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props
     if (lassoPath.length >= 3) {
       const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
       const newZone: PdfZone = {
-        id: crypto.randomUUID(),
+        id: uid(),
         paths: lassoPath,
         color: selectedColor,
         name: `Zone ${value.zones.length + 1}`,
@@ -289,7 +291,7 @@ const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props
         setSelectedLamppostId(selectedLamppostId === existing.id ? null : existing.id);
       } else {
         const newLp: PdfLamppost = {
-          id: crypto.randomUUID(),
+          id: uid(),
           x: nx,
           y: ny,
           page: currentPage,
@@ -468,22 +470,38 @@ const PdfZoneEditor = ({ value, onChange, lang = "en", embedded = false }: Props
         {value.zones.length > 0 && (
           <div className="flex items-center gap-2">
             <span>{value.zones.length} zone(s)</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, zones: [] })}>
-              {l("Effacer les zones", "Clear all zones")}
-            </Button>
+            <ConfirmButton
+              title={l("Effacer toutes les zones ?", "Clear all zones?")}
+              description={l("Toutes les zones dessinées sur ce plan seront supprimées.", "Every zone drawn on this plan will be removed.")}
+              confirmLabel={l("Effacer", "Clear")}
+              cancelLabel={l("Annuler", "Cancel")}
+              onConfirm={() => onChange({ ...value, zones: [] })}
+            >
+              <Button type="button" size="sm" variant="outline">
+                {l("Effacer les zones", "Clear all zones")}
+              </Button>
+            </ConfirmButton>
           </div>
         )}
         {(value.lampposts || []).length > 0 && (
           <div className="flex items-center gap-2">
             <span>💡 {(value.lampposts || []).length} {l("lampadaire(s)", "lamppost(s)")}</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...value, lampposts: [] })}>
-              {l("Effacer les lampadaires", "Clear lampposts")}
-            </Button>
+            <ConfirmButton
+              title={l("Effacer tous les lampadaires ?", "Clear all lampposts?")}
+              description={l("Tous les lampadaires placés sur ce plan seront supprimés.", "Every lamppost placed on this plan will be removed.")}
+              confirmLabel={l("Effacer", "Clear")}
+              cancelLabel={l("Annuler", "Cancel")}
+              onConfirm={() => onChange({ ...value, lampposts: [] })}
+            >
+              <Button type="button" size="sm" variant="outline">
+                {l("Effacer les lampadaires", "Clear lampposts")}
+              </Button>
+            </ConfirmButton>
           </div>
         )}
       </div>
     </div>
   );
-};
+});
 
 export default PdfZoneEditor;

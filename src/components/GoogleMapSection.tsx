@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { uid } from "@/lib/utils";
 import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,7 +235,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     if (lassoPath.length >= 3) {
       const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
       const newArea: MapArea = {
-        id: crypto.randomUUID(),
+        id: uid(),
         type: "polygon",
         paths: lassoPath,
         color: selectedColor,
@@ -256,7 +257,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
       const newLamppost: MapLamppost = {
-        id: crypto.randomUUID(),
+        id: uid(),
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
         type: lamppostType,

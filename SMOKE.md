@@ -3,6 +3,19 @@
 Quick manual pass to run after any change, in the running dev app (`npm run dev`, http://localhost:8080).
 Goal: catch regressions in the two core flows and the PDF deliverable before committing.
 
+## 0b. Persistence & recovery (overnight batch)
+
+- [ ] Fill fields → wait ~1s → reload: a "draft found" banner appears; **Restore** brings everything back, **Discard** clears it.
+- [ ] Try to close the tab with unsaved edits → browser shows the leave-confirmation.
+- [ ] Header **Projects** menu: Save current project → reload/Discard → open it from the list; Delete removes it.
+- [ ] After a successful submit, the draft is cleared and the leave-warning stops.
+
+## 0c. Validation (mode-aware)
+
+- [ ] Zone: requires address, avg lux, CCT, product.
+- [ ] Road **Builder**: requires only the 4 general fields (no address, no global product).
+- [ ] Road **PDF Profile**: requires a document + a product (or "recommend") per profile; **no** global address/product. Profiles with no levels show a soft nudge on submit but don't block.
+
 ## 0. Environment
 
 - [ ] `.env.local` exists (copied from `.env.example`) with real keys.
