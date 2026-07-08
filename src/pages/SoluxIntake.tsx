@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { uid } from "@/lib/utils";
+import { uid, deepClone } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -77,7 +77,7 @@ const SoluxIntake = () => {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
   const [lang, setLang] = useState<"fr" | "en">("en");
-  const [form, setForm] = useState<SoluxForm>({ ...defaultForm });
+  const [form, setForm] = useState<SoluxForm>(() => deepClone(defaultForm));
   const [files, setFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [computingDusk, setComputingDusk] = useState(false);
@@ -93,11 +93,27 @@ const SoluxIntake = () => {
   const dirtyRef = useRef(false);
   const firstRenderRef = useRef(true);
   const autosaveWarnedRef = useRef(false);
+  // C2 — suppress the one autosave that would otherwise fire right after a
+  // successful submit and re-create the draft that submit just cleared.
+  const justSubmittedRef = useRef(false);
+  // F3 — synchronous double-submit guard (setSubmitting is async, so a fast
+  // double-click can enter onSubmit twice before the button disables).
+  const submittingRef = useRef(false);
+  // C5 — the currently-selected zone, read at auto-calc call time so a slow
+  // geocode result never lands on a different zone the user switched to.
+  const assignedAreaRef = useRef(form.assignedArea);
+  assignedAreaRef.current = form.assignedArea;
   useEffect(() => {
     if (firstRenderRef.current) { firstRenderRef.current = false; return; }
     // While the restore banner is open, don't clobber the stored draft with
     // the pristine form the user hasn't chosen yet.
     if (pendingDraft) return;
+    // C2 — never autosave during a submit (the pending timer is cancelled by
+    // cleanup when `submitting` flips), and skip the single run triggered when
+    // submitting flips back to false, or we'd re-persist the draft submit just
+    // cleared and it would reappear as an "unsent draft".
+    if (submitting) return;
+    if (justSubmittedRef.current) { justSubmittedRef.current = false; return; }
     dirtyRef.current = true;
     const t = setTimeout(() => {
       const outcome = saveDraft(form);
@@ -119,7 +135,7 @@ const SoluxIntake = () => {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [form, pendingDraft, toast, l]);
+  }, [form, pendingDraft, submitting, toast, l]);
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => {
       if (dirtyRef.current) { e.preventDefault(); e.returnValue = ""; }
@@ -179,7 +195,7 @@ const SoluxIntake = () => {
           ...current,
           projectType: "zone",
           roadProfile: [],
-          roadLighting: { ...defaultLightingSetup },
+          roadLighting: deepClone(defaultLightingSetup),
           roadSegmentLighting: {},
           roadDocuments: [],
           roadProfileNotes: "",
@@ -193,7 +209,7 @@ const SoluxIntake = () => {
         projectType: "road",
         areas: [],
         lampposts: [],
-        pdfPlan: { ...defaultForm.pdfPlan },
+        pdfPlan: deepClone(defaultForm.pdfPlan),
         zoneLightingData: {},
         assignedArea: "",
         multiProduct: false,
@@ -213,7 +229,22 @@ const SoluxIntake = () => {
   const handleRoadDocumentsChange = useCallback((docs: ProjectDocument[]) => onChange("roadDocuments", docs), [onChange]);
   const handleRoadProfileNotesChange = useCallback((v: string) => onChange("roadProfileNotes", v), [onChange]);
   const handlePdfPlanChange = useCallback((val: SoluxForm["pdfPlan"]) => onChange("pdfPlan", val), [onChange]);
-  const handleRoadProfileChange = useCallback((v: SoluxForm["roadProfile"]) => onChange("roadProfile", v), [onChange]);
+  const handleRoadProfileChange = useCallback((v: SoluxForm["roadProfile"]) => {
+    // F2 — prune per-segment levels whose segment was removed, so orphan entries
+    // aren't kept in state, autosaved and submitted for segments that no longer exist.
+    setForm((f) => {
+      const validIds = new Set(v.map((s) => s.id));
+      let pruned = f.roadSegmentLighting;
+      const orphan = Object.keys(f.roadSegmentLighting).some((k) => !validIds.has(k));
+      if (orphan) {
+        pruned = {};
+        Object.keys(f.roadSegmentLighting).forEach((k) => {
+          if (validIds.has(k)) pruned[k] = f.roadSegmentLighting[k];
+        });
+      }
+      return { ...f, roadProfile: v, roadSegmentLighting: pruned };
+    });
+  }, []);
   const handleRoadLightingChange = useCallback((v: SoluxForm["roadLighting"]) => onChange("roadLighting", v), [onChange]);
   const mapValue = useMemo(() => ({
     address: form.address,
@@ -336,6 +367,10 @@ const SoluxIntake = () => {
         });
       }
     }
+    // F3 — reject a second concurrent submit synchronously (before the async
+    // setSubmitting re-render disables the button).
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const result = await saveSubmission(form, { salesName });
@@ -348,6 +383,7 @@ const SoluxIntake = () => {
       // The request is safely in the database — the local draft has done its job.
       clearDraft();
       dirtyRef.current = false;
+      justSubmittedRef.current = true; // C2: don't let autosave re-create the draft
       toast({
         title: l("Demande enregistrée", "Request Saved"),
         description: l("Votre demande a été transmise au bureau d'études.", "Your request has been sent to the design team."),
@@ -360,6 +396,7 @@ const SoluxIntake = () => {
       });
     } finally {
       setSubmitting(false);
+      submittingRef.current = false;
     }
   };
 
@@ -419,12 +456,28 @@ const SoluxIntake = () => {
     });
   }, []);
 
+  // P4 — stable per-field handlers so the memoized ProductSelectionSection can
+  // skip re-renders while the user types in unrelated fields.
+  const psProduct = useCallback((v: string) => syncAssignedZoneData({ product: v }), [syncAssignedZoneData]);
+  const psHeight = useCallback((v: string) => syncAssignedZoneData({ luminaireHeight: v }), [syncAssignedZoneData]);
+  const psSpacing = useCallback((v: string) => syncAssignedZoneData({ spacing: v }), [syncAssignedZoneData]);
+  const psOptHeight = useCallback((v: boolean) => syncAssignedZoneData({ optimizeHeight: v }), [syncAssignedZoneData]);
+  const psOptSpacing = useCallback((v: boolean) => syncAssignedZoneData({ optimizeSpacing: v }), [syncAssignedZoneData]);
+  const psBatteryChoice = useCallback((v: "standard" | "custom") => syncAssignedZoneData({ batteryChoice: v }), [syncAssignedZoneData]);
+  const psBatteryWh = useCallback((v: string) => syncAssignedZoneData({ batteryWh: v }), [syncAssignedZoneData]);
+  const psPanelChoice = useCallback((v: "standard" | "custom") => syncAssignedZoneData({ panelChoice: v }), [syncAssignedZoneData]);
+  const psPanelWp = useCallback((v: string) => syncAssignedZoneData({ panelWp: v }), [syncAssignedZoneData]);
+  const psAltAccepted = useCallback((v: boolean) => syncAssignedZoneData({ alternativeAccepted: v }), [syncAssignedZoneData]);
+  const psAltDetails = useCallback((v: string) => syncAssignedZoneData({ alternativeDetails: v }), [syncAssignedZoneData]);
+
   // Compute the worst-case sizing references (longest night + winter-solstice
   // sunset) from the project's latitude, then auto-fill the night duration and
   // the program start time. Uses the map pin when available, otherwise geocodes
   // the typed city/address.
   const handleAutoCalcNight = useCallback(async () => {
     setComputingDusk(true);
+    // C5 — remember which zone was selected when the button was clicked.
+    const startZone = assignedAreaRef.current;
     try {
       let loc = form.location;
       let geoFormatted: string | undefined;
@@ -454,7 +507,14 @@ const SoluxIntake = () => {
       const res = await resolveWinterSolsticeDusk(loc, GOOGLE_MAPS_API_KEY, new Date().getFullYear());
       const nightH = clampNightHours(res.longestNightH);
 
+      let bailedOnZoneChange = false;
       setForm((current) => {
+        // C5 — if the user switched zones while we were computing, don't apply
+        // this zone's result to a different zone. Leave everything untouched.
+        if (current.assignedArea !== startZone) {
+          bailedOnZoneChange = true;
+          return current;
+        }
         // Standard periods cover the night minus the fixed Morning Time block.
         const scaled = rescaleSegmentsToTotal(current.lightingSegments, Math.max(1, nightH - current.morningTimeH));
         const next: SoluxForm = {
@@ -484,6 +544,15 @@ const SoluxIntake = () => {
           },
         };
       });
+
+      if (bailedOnZoneChange) {
+        toast({
+          title: l("Zone changée", "Zone changed"),
+          description: l("La zone a changé pendant le calcul — relancez le calcul pour la zone sélectionnée.", "The selected zone changed during the calculation — run it again for the current zone."),
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
         title: l("Calcul effectué", "Calculation done"),
@@ -558,9 +627,6 @@ const SoluxIntake = () => {
       };
     });
   }, [allZones]);
-
-  // Unique road segment types
-  const uniqueSegmentTypes = [...new Set(form.roadProfile.map((s) => s.type))];
 
   // No auth gate - form is accessible to everyone
 
@@ -641,19 +707,19 @@ const SoluxIntake = () => {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>{l("Nom du projet *", "Project Name *")}</Label>
-                      <Input value={form.projectName} onChange={(e) => onChange("projectName", e.target.value)} required />
+                      <Input value={form.projectName} onChange={(e) => onChange("projectName", e.target.value)} maxLength={120} required />
                     </div>
                     <div className="space-y-2">
                       <Label>{l("Nom du client *", "Client Name *")}</Label>
-                      <Input value={form.clientName} onChange={(e) => onChange("clientName", e.target.value)} required />
+                      <Input value={form.clientName} onChange={(e) => onChange("clientName", e.target.value)} maxLength={120} required />
                     </div>
                     <div className="space-y-2">
                       <Label>{l("Localité *", "City/Location *")}</Label>
-                      <Input value={form.locality} onChange={(e) => onChange("locality", e.target.value)} required />
+                      <Input value={form.locality} onChange={(e) => onChange("locality", e.target.value)} maxLength={120} required />
                     </div>
                     <div className="space-y-2">
                       <Label>{l("Pays *", "Country *")}</Label>
-                      <Input value={form.country} onChange={(e) => onChange("country", e.target.value)} required />
+                      <Input value={form.country} onChange={(e) => onChange("country", e.target.value)} maxLength={80} required />
                     </div>
                   </div>
                 </section>
@@ -689,7 +755,7 @@ const SoluxIntake = () => {
                       onClick={() => requestSwitchType("road")}
                     >
                       <span className="text-2xl">🛣️</span>
-                      <h3 className="font-semibold mt-2">{l("Éclairage routier", "Road & Street lighting Lighting")}</h3>
+                      <h3 className="font-semibold mt-2">{l("Éclairage routier", "Road & Street Lighting")}</h3>
                       <p className="text-sm text-muted-foreground">{l("Route, rue, autoroute, piste cyclable, etc.", "Road, street, highway, bike path, etc.")}</p>
                     </button>
                   </div>
@@ -839,63 +905,43 @@ const SoluxIntake = () => {
                       />
                     </section>
 
-                    {/* Per-segment lighting levels */}
-                    {form.roadProfile.length > 0 && uniqueSegmentTypes.length > 0 && (
+                    {/* Per-segment lighting levels — keyed by segment id so two
+                        segments of the same type can carry different levels (F2). */}
+                    {form.roadProfile.length > 0 && (
                       <section>
                         <h3 className="text-lg font-semibold mb-4">{l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}</h3>
-                        {uniqueSegmentTypes.map((segType) => {
-                          const segInfo = SEGMENT_TYPES.find((t) => t.value === segType);
-                          const segLighting = form.roadSegmentLighting[segType] || { avgLux: "", uniformity: "", minLux: "", cct: "4000K" };
+                        {form.roadProfile.map((seg, i) => {
+                          const segInfo = SEGMENT_TYPES.find((t) => t.value === seg.type);
+                          const segLabel = segInfo ? (lang === "fr" ? segInfo.labelFr : segInfo.labelEn) : seg.type;
+                          const segLighting = form.roadSegmentLighting[seg.id] || { avgLux: "", uniformity: "", minLux: "", cct: "4000K" };
+                          const setSeg = (patch: Partial<typeof segLighting>) => onChange("roadSegmentLighting", {
+                            ...form.roadSegmentLighting,
+                            [seg.id]: { ...segLighting, ...patch },
+                          });
                           return (
-                            <Card key={segType} className="mb-4">
+                            <Card key={seg.id} className="mb-4">
                               <CardContent className="p-4">
                                 <div className="flex items-center gap-2 mb-3">
-                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[segType] }} />
-                                  <span className="font-medium">{segInfo ? (lang === "fr" ? segInfo.labelFr : segInfo.labelEn) : segType}</span>
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[seg.type] }} />
+                                  <span className="font-medium">{segLabel}</span>
+                                  <span className="text-xs text-muted-foreground">#{i + 1} · {seg.width}m</span>
                                 </div>
                                 <div className="grid md:grid-cols-2 gap-3">
                                   <div className="space-y-1">
                                     <Label className="text-xs">{l("Lux moyen", "Average Lux")}</Label>
-                                    <Input
-                                      value={segLighting.avgLux}
-                                      onChange={(e) => onChange("roadSegmentLighting", {
-                                        ...form.roadSegmentLighting,
-                                        [segType]: { ...segLighting, avgLux: e.target.value },
-                                      })}
-                                      placeholder="15"
-                                    />
+                                    <Input value={segLighting.avgLux} onChange={(e) => setSeg({ avgLux: e.target.value })} placeholder="15" />
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-xs">{l("Uniformité", "Uniformity")}</Label>
-                                    <Input
-                                      value={segLighting.uniformity}
-                                      onChange={(e) => onChange("roadSegmentLighting", {
-                                        ...form.roadSegmentLighting,
-                                        [segType]: { ...segLighting, uniformity: e.target.value },
-                                      })}
-                                      placeholder="0.6"
-                                    />
+                                    <Input value={segLighting.uniformity} onChange={(e) => setSeg({ uniformity: e.target.value })} placeholder="0.6" />
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-xs">{l("Lux min", "Min Lux")}</Label>
-                                    <Input
-                                      value={segLighting.minLux}
-                                      onChange={(e) => onChange("roadSegmentLighting", {
-                                        ...form.roadSegmentLighting,
-                                        [segType]: { ...segLighting, minLux: e.target.value },
-                                      })}
-                                      placeholder="4"
-                                    />
+                                    <Input value={segLighting.minLux} onChange={(e) => setSeg({ minLux: e.target.value })} placeholder="4" />
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-xs">CCT</Label>
-                                    <Select
-                                      value={segLighting.cct}
-                                      onValueChange={(v) => onChange("roadSegmentLighting", {
-                                        ...form.roadSegmentLighting,
-                                        [segType]: { ...segLighting, cct: v },
-                                      })}
-                                    >
+                                    <Select value={segLighting.cct} onValueChange={(v) => setSeg({ cct: v })}>
                                       <SelectTrigger><SelectValue /></SelectTrigger>
                                       <SelectContent>
                                         <SelectItem value="3000K">3000K</SelectItem>
@@ -942,27 +988,27 @@ const SoluxIntake = () => {
                   )}
                   <ProductSelectionSection
                     product={form.product}
-                    onProductChange={(v) => syncAssignedZoneData({ product: v })}
+                    onProductChange={psProduct}
                     luminaireHeight={form.luminaireHeight}
-                    onLuminaireHeightChange={(v) => syncAssignedZoneData({ luminaireHeight: v })}
+                    onLuminaireHeightChange={psHeight}
                     spacing={form.spacing}
-                    onSpacingChange={(v) => syncAssignedZoneData({ spacing: v })}
+                    onSpacingChange={psSpacing}
                     optimizeHeight={form.optimizeHeight}
-                    onOptimizeHeightChange={(v) => syncAssignedZoneData({ optimizeHeight: v })}
+                    onOptimizeHeightChange={psOptHeight}
                     optimizeSpacing={form.optimizeSpacing}
-                    onOptimizeSpacingChange={(v) => syncAssignedZoneData({ optimizeSpacing: v })}
+                    onOptimizeSpacingChange={psOptSpacing}
                     batteryChoice={form.batteryChoice}
-                    onBatteryChoiceChange={(v) => syncAssignedZoneData({ batteryChoice: v })}
+                    onBatteryChoiceChange={psBatteryChoice}
                     batteryWh={form.batteryWh}
-                    onBatteryWhChange={(v) => syncAssignedZoneData({ batteryWh: v })}
+                    onBatteryWhChange={psBatteryWh}
                     panelChoice={form.panelChoice}
-                    onPanelChoiceChange={(v) => syncAssignedZoneData({ panelChoice: v })}
+                    onPanelChoiceChange={psPanelChoice}
                     panelWp={form.panelWp}
-                    onPanelWpChange={(v) => syncAssignedZoneData({ panelWp: v })}
+                    onPanelWpChange={psPanelWp}
                     alternativeAccepted={form.alternativeAccepted}
-                    onAlternativeAcceptedChange={(v) => syncAssignedZoneData({ alternativeAccepted: v })}
+                    onAlternativeAcceptedChange={psAltAccepted}
                     alternativeDetails={form.alternativeDetails}
-                    onAlternativeDetailsChange={(v) => syncAssignedZoneData({ alternativeDetails: v })}
+                    onAlternativeDetailsChange={psAltDetails}
                     hideMultiToggle
                     lang={lang}
                   />

@@ -39,6 +39,15 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
+  // C4/P2 — the canvas→base64 preview capture is deferred (debounced) and merged
+  // onto the LATEST value via a ref, so it (a) doesn't re-encode a multi-MB PNG on
+  // every render/lasso point, and (b) can't revert a concurrent zone edit by
+  // spreading a stale `value`.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const captureTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(captureTimerRef.current), []);
+
   // Load the source — a PDF (via pdf.js) or a raster image. Images cover PNG/JPG
   // uploads and the generated preview of a CAD file; both annotate identically.
   useEffect(() => {
@@ -200,13 +209,19 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         ctx.restore();
       });
 
-      // Capture preview
-      try {
-        const preview = canvas.toDataURL("image/png");
-        if (preview !== value.previewImage) {
-          onChange({ ...value, previewImage: preview, viewState: { page: currentPage, zoom, rotation } });
-        }
-      } catch {}
+      // Capture preview — deferred so rapid edits (e.g. each lasso point) coalesce
+      // into one encode, and merged onto the latest value (valueRef) so it never
+      // reverts a concurrent zone/lamppost edit (C4/P2).
+      clearTimeout(captureTimerRef.current);
+      captureTimerRef.current = setTimeout(() => {
+        try {
+          const preview = canvas.toDataURL("image/png");
+          const cur = valueRef.current;
+          if (preview !== cur.previewImage) {
+            onChange({ ...cur, previewImage: preview, viewState: { page: currentPage, zoom, rotation } });
+          }
+        } catch { /* tainted canvas / unsupported — leave preview as-is */ }
+      }, 400);
     };
     render();
   }, [pdfDoc, imgEl, isImage, currentPage, zoom, rotation, value.zones, value.lampposts, selectedLamppostId, lassoPath]);

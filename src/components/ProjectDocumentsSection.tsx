@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Upload, Trash2, Plus, RefreshCw, FileText, Image as ImageIcon, Box,
   Eye, EyeOff, MessageSquareText, MapPin, Sparkles, Copy, AlertTriangle,
@@ -556,20 +557,23 @@ const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ document
                 />
                 <div className="flex shrink-0 items-center gap-2">
                   {documents.length > 1 && (
-                    // Reuse levels from another profile — values map by segment
-                    // type; the trigger stays on its placeholder (value="").
-                    <Select value="" onValueChange={(sourceId) => copyLevelsFrom(selected.id, sourceId)}>
-                      <SelectTrigger className="h-9 w-[200px]">
-                        <SelectValue placeholder={l("Copier les niveaux de…", "Copy levels from…")} />
-                      </SelectTrigger>
-                      <SelectContent>
+                    // F1 — a menu of buttons (not a Select): every pick fires, so
+                    // choosing the same/first source always copies. A Select
+                    // remembers its value and silently no-ops on a repeat pick.
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" size="sm" variant="outline" className="h-9">
+                          <Copy className="h-4 w-4 mr-1" /> {l("Copier les niveaux de…", "Copy levels from…")}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
                         {documents.filter((d) => d.id !== selected.id).map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
+                          <DropdownMenuItem key={d.id} onSelect={() => copyLevelsFrom(selected.id, d.id)}>
                             {d.profileName || l("Sans nom", "Untitled")} · {d.fileName}
-                          </SelectItem>
+                          </DropdownMenuItem>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                   <Button type="button" size="sm" variant="outline" onClick={() => updateDoc(selected.id, { segments: [...selected.segments, createDefaultProfileSegment("sidewalk")] })}>
                     <Plus className="h-4 w-4 mr-1" /> {l("Ajouter une section", "Add section")}

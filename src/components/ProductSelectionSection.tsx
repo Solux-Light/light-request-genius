@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Input } from "@/components/ui/input";
 import { uid } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
@@ -278,4 +279,6 @@ const ProductSelectionSection = ({
   );
 };
 
-export default ProductSelectionSection;
+// P4 — memoized so it can skip re-renders when its (now-stable) props are
+// unchanged while the user types in unrelated fields.
+export default memo(ProductSelectionSection);

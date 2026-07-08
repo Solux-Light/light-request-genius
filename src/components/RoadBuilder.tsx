@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import NumericInput from "@/components/NumericInput";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Copy, GripVertical, Plus } from "lucide-react";
@@ -163,13 +164,12 @@ const RoadBuilder = memo(function RoadBuilder({ value, onChange, lang = "en" }: 
           {/* Width */}
           <div className="w-28 space-y-1">
             <Label className="text-xs">{l("Largeur (m)", "Width (m)")}</Label>
-            <Input
-              type="number"
+            <NumericInput
               step={0.5}
               min={0.5}
               max={20}
               value={seg.width}
-              onChange={(e) => updateSegment(seg.id, { width: parseFloat(e.target.value) || 0.5 })}
+              onCommit={(n) => updateSegment(seg.id, { width: n })}
             />
           </div>
 

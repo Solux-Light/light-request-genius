@@ -57,7 +57,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
     form.pdfPlan.zones.forEach((z) => { zoneNameById[z.id] = z.name || `Zone ${z.id.slice(0, 6)}`; });
 
     return (
-      <div ref={ref} style={{ width: 794, fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, padding: 40, backgroundColor: "#fff", color: "#111" }}>
+      <div ref={ref} style={{ width: 794, fontFamily: "Inter, system-ui, sans-serif", fontSize: 12, lineHeight: 1.6, padding: 40, backgroundColor: "#fff", color: "#111", overflowWrap: "anywhere", wordBreak: "break-word" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #111", paddingBottom: 16, marginBottom: 24 }}>
           <h1 style={{ fontSize: 18, fontWeight: 700 }}>
@@ -71,7 +71,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, borderBottom: "1px solid #e5e7eb", paddingBottom: 4 }}>
             {l("Informations générales", "General Information")}
           </h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <tbody>
               {[
                 [l("Nom du projet", "Project Name"), form.projectName],
@@ -342,15 +342,18 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                     <td key={i} style={{ padding: "4px 8px", fontWeight: 700 }}>{h}</td>
                   ))}
                 </tr>
-                {Object.entries(form.roadSegmentLighting).map(([type, lvl]) => (
-                  <tr key={type} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "4px 8px", fontWeight: 600 }}>{getSegLabel(type)}</td>
-                    <td style={{ padding: "4px 8px" }}>{lvl.avgLux || "—"}</td>
-                    <td style={{ padding: "4px 8px" }}>{lvl.uniformity || "—"}</td>
-                    <td style={{ padding: "4px 8px" }}>{lvl.minLux || "—"}</td>
-                    <td style={{ padding: "4px 8px" }}>{lvl.cct || "—"}</td>
-                  </tr>
-                ))}
+                {form.roadProfile.filter((seg) => form.roadSegmentLighting[seg.id]).map((seg) => {
+                  const lvl = form.roadSegmentLighting[seg.id];
+                  return (
+                    <tr key={seg.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "4px 8px", fontWeight: 600 }}>{getSegLabel(seg.type)} · {seg.width}m</td>
+                      <td style={{ padding: "4px 8px" }}>{lvl.avgLux || "—"}</td>
+                      <td style={{ padding: "4px 8px" }}>{lvl.uniformity || "—"}</td>
+                      <td style={{ padding: "4px 8px" }}>{lvl.minLux || "—"}</td>
+                      <td style={{ padding: "4px 8px" }}>{lvl.cct || "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </section>

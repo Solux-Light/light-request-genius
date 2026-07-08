@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { uid } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
+import NumericInput from "@/components/NumericInput";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Plus, Wand2, Sunrise } from "lucide-react";
@@ -55,11 +55,6 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
       ],
     });
 
-  const num = (v: string) => {
-    const n = parseFloat(v.replace(",", "."));
-    return isNaN(n) ? 0 : n;
-  };
-
   const cell = "h-8 px-2 text-sm";
 
   return (
@@ -68,19 +63,19 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
       <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1">
           <Label className="text-xs">{l("Durée de nuit (h)", "Night duration (h)")}</Label>
-          <Input
-            type="number" step="0.5" min={1} max={24}
+          <NumericInput
+            step="0.5" min={1} max={24}
             value={value.nightHours}
-            onChange={(e) => patch({ nightHours: Math.min(24, Math.max(1, num(e.target.value))) })}
+            onCommit={(n) => patch({ nightHours: n })}
             className={`${cell} w-24`}
           />
         </div>
         <div className="space-y-1">
           <Label className="text-xs flex items-center gap-1"><Sunrise className="h-3.5 w-3.5 text-amber-600" /> Morning Time (h)</Label>
-          <Input
-            type="number" step="0.5" min={0} max={6}
+          <NumericInput
+            step="0.5" min={0} max={6}
             value={value.morningTimeH}
-            onChange={(e) => patch({ morningTimeH: Math.min(6, Math.max(0, num(e.target.value))) })}
+            onCommit={(n) => patch({ morningTimeH: n })}
             className={`${cell} w-24`}
             title={l("Toujours la dernière période — se termine au lever du soleil", "Always the final period — ends at sunrise")}
           />
@@ -88,10 +83,10 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
         {value.morningTimeH > 0 && (
           <div className="space-y-1">
             <Label className="text-xs">{l("Intensité Morning (%)", "Morning intensity (%)")}</Label>
-            <Input
-              type="number" step="5" min={10} max={100}
+            <NumericInput
+              step="5" min={10} max={100}
               value={value.morningIntensityPct}
-              onChange={(e) => patch({ morningIntensityPct: Math.min(100, Math.max(10, num(e.target.value))) })}
+              onCommit={(n) => patch({ morningIntensityPct: n })}
               className={`${cell} w-24`}
             />
           </div>
@@ -144,37 +139,37 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
                   </Select>
                 </td>
                 <td className="px-1 py-1">
-                  <Input
-                    type="number" step="0.5" min={0.5}
+                  <NumericInput
+                    step="0.5" min={0.5}
                     value={seg.hours}
-                    onChange={(e) => patchSeg(seg.id, { hours: Math.max(0.5, num(e.target.value)) })}
+                    onCommit={(n) => patchSeg(seg.id, { hours: n })}
                     className={`${cell} border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary rounded-none`}
                   />
                 </td>
                 <td className="px-1 py-1">
                   {seg.mode === "sensor" ? (
                     <div className="flex items-center gap-1">
-                      <Input
-                        type="number" step="5" min={0} max={95}
+                      <NumericInput
+                        step="5" min={0} max={95}
                         value={seg.min ?? 0}
-                        onChange={(e) => patchSeg(seg.id, { min: Math.min(95, Math.max(0, num(e.target.value))) })}
+                        onCommit={(n) => patchSeg(seg.id, { min: n })}
                         className={`${cell} w-16 border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary rounded-none`}
                         title={l("Puissance de veille", "Idle power")}
                       />
                       <span className="text-muted-foreground">→</span>
-                      <Input
-                        type="number" step="5" min={50} max={100}
+                      <NumericInput
+                        step="5" min={50} max={100}
                         value={seg.max ?? 100}
-                        onChange={(e) => patchSeg(seg.id, { max: Math.min(100, Math.max(50, num(e.target.value))) })}
+                        onCommit={(n) => patchSeg(seg.id, { max: n })}
                         className={`${cell} w-16 border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary rounded-none`}
                         title={l("Puissance de détection", "Detection power")}
                       />
                     </div>
                   ) : (
-                    <Input
-                      type="number" step="5" min={10} max={100}
+                    <NumericInput
+                      step="5" min={10} max={100}
                       value={seg.intensity ?? 100}
-                      onChange={(e) => patchSeg(seg.id, { intensity: Math.min(100, Math.max(10, num(e.target.value))) })}
+                      onCommit={(n) => patchSeg(seg.id, { intensity: n })}
                       className={`${cell} w-16 border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary rounded-none`}
                     />
                   )}

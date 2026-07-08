@@ -63,6 +63,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const suppressMapClickUntilRef = useRef(0);
+  // The Places autocomplete listener is attached once; without these refs it would
+  // close over the first-render value/onChange and wipe any zones drawn afterwards
+  // when the user picks an address (a stale-closure data-loss bug).
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
@@ -114,8 +121,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       if (place.geometry?.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        const addr = place.formatted_address || place.name || value.address;
-        onChange({ ...value, address: addr, location: { lat, lng } });
+        // Read the LATEST value/onChange via refs so drawn zones/lampposts survive.
+        const current = valueRef.current;
+        const addr = place.formatted_address || place.name || current.address;
+        onChangeRef.current({ ...current, address: addr, location: { lat, lng } });
         mapRef.current?.panTo({ lat, lng });
         mapRef.current?.setZoom(17);
       }

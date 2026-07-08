@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FileText } from "lucide-react";
@@ -17,7 +17,10 @@ interface Props {
 const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const previewRef = useRef<HTMLDivElement>(null);
-  
+  // P3 — render the document (which mounts a live Google Map) only while the
+  // dialog is open, never behind a closed modal on the typing hot path.
+  const [open, setOpen] = useState(false);
+
 
   const safeName = form.projectName
     .normalize("NFD")
@@ -27,7 +30,7 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
     .replace(/^-|-$/g, "") || "document";
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="lg">
           <FileText className="h-4 w-4 mr-2" />
@@ -40,19 +43,23 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
           <DialogDescription>{l("Aperçu avant export.", "Preview the document before exporting.")}</DialogDescription>
         </DialogHeader>
 
-        {/* Visible preview */}
-        <PdfSubmissionDocument
-          ref={previewRef}
-          form={form}
-          salesName={salesName}
-          nowStr={nowStr}
-          lang={lang}
-          apiKey={apiKey}
-        />
+        {open && (
+          <>
+            {/* Visible preview */}
+            <PdfSubmissionDocument
+              ref={previewRef}
+              form={form}
+              salesName={salesName}
+              nowStr={nowStr}
+              lang={lang}
+              apiKey={apiKey}
+            />
 
-        <div className="flex justify-end pt-4">
-          <PdfExportButton contentRef={previewRef} filename={`${safeName}.pdf`} lang={lang} />
-        </div>
+            <div className="flex justify-end pt-4">
+              <PdfExportButton contentRef={previewRef} filename={`${safeName}.pdf`} lang={lang} />
+            </div>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
