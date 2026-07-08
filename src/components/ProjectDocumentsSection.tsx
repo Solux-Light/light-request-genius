@@ -12,6 +12,7 @@ import {
   Eye, EyeOff, MessageSquareText, MapPin, Sparkles, Copy, AlertTriangle,
 } from "lucide-react";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
+import CctSelect from "@/components/CctSelect";
 import ConfirmButton from "@/components/ConfirmButton";
 import HeightField from "@/components/HeightField";
 import LightingProgramTable from "@/components/LightingProgramTable";
@@ -30,6 +31,7 @@ import {
   PRODUCT_FAMILIES,
   ProfileOptimizeFlags,
   PROFILE_SEGMENT_KINDS,
+  profileKindLabel,
   ROAD_CLASS_OPTIONS,
   formatHeight,
 } from "@/types/solux";
@@ -121,10 +123,7 @@ const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ document
   // Step 2 — the profile being configured. Fall back to the first profile.
   const selected = documents.find((d) => d.id === selectedId) ?? documents[0] ?? null;
 
-  const segKindLabel = (kind: string) => {
-    const k = PROFILE_SEGMENT_KINDS.find((s) => s.value === kind);
-    return k ? (lang === "fr" ? k.labelFr : k.labelEn) : kind;
-  };
+  const segKindLabel = (kind: string) => profileKindLabel(kind, lang);
   const segDisplayName = (seg: ProfileSegment) => seg.label || segKindLabel(seg.kind);
 
   // All mutations flow through docsRef so several synchronous updates in one
@@ -738,15 +737,7 @@ const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ document
                     {/* Product-level CCT (deliberately not per road segment) */}
                     <div className="space-y-1">
                       <Label className="text-xs">{l("Température de couleur (CCT)", "Color Temperature (CCT)")}</Label>
-                      <Select value={selected.config.cct} onValueChange={(v) => updateConfig(selected, { cct: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="2700K">2700K</SelectItem>
-                          <SelectItem value="3000K">3000K</SelectItem>
-                          <SelectItem value="4000K">4000K</SelectItem>
-                          <SelectItem value="5000K">5000K</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <CctSelect value={selected.config.cct} onChange={(v) => updateConfig(selected, { cct: v })} includeWarm />
                     </div>
                     <div className="space-y-1">
                       <FieldHead label={l("Hauteur de feu (m)", "Mounting Height (m)")} k="height" />

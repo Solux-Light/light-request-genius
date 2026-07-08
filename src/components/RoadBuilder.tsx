@@ -6,7 +6,7 @@ import NumericInput from "@/components/NumericInput";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Copy, GripVertical, Plus } from "lucide-react";
-import { RoadProfile, RoadSegment, SEGMENT_TYPES, SEGMENT_COLORS } from "@/types/solux";
+import { RoadProfile, RoadSegment, SEGMENT_TYPES, SEGMENT_COLORS, segmentTypeLabel } from "@/types/solux";
 
 interface Props {
   value: RoadProfile;
@@ -71,10 +71,7 @@ const RoadBuilder = memo(function RoadBuilder({ value, onChange, lang = "en" }: 
 
   const totalWidth = value.reduce((s, seg) => s + seg.width, 0);
 
-  const getLabel = (type: string) => {
-    const t = SEGMENT_TYPES.find((s) => s.value === type);
-    return t ? (lang === "fr" ? t.labelFr : t.labelEn) : type;
-  };
+  const getLabel = (type: string) => segmentTypeLabel(type, lang);
 
   return (
     <div className="space-y-6">

@@ -5,6 +5,15 @@ import { LightingSegment } from "@/types/solux";
 
 export const snapHalf = (h: number) => Math.round(h * 2) / 2;
 
+// Q8 — one colour for a program period, shared by the on-screen timeline and the
+// PDF (they had drifted: one treated an undefined intensity as 100, the other
+// didn't). Sensor = green, full-power fixed = ink, dimmed fixed = grey.
+export const segmentColor = (seg: LightingSegment): string => {
+  if (seg.mode === "sensor") return "rgb(137, 250, 140)";
+  if ((seg.intensity ?? 100) === 100) return "#111";
+  return "rgb(170, 173, 184)";
+};
+
 // Proportionally rescale period durations so they sum to `total` hours,
 // snapping to the 0.5 h grid and absorbing rounding drift into the last
 // period (min 0.5 h each).

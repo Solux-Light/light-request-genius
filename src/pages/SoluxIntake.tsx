@@ -21,6 +21,7 @@ import GoogleMapSection from "@/components/GoogleMapSection";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
 import ProductSelectionSection from "@/components/ProductSelectionSection";
 import LightingProgramTable from "@/components/LightingProgramTable";
+import CctSelect from "@/components/CctSelect";
 import StepHeader from "@/components/StepHeader";
 import RoadBuilder from "@/components/RoadBuilder";
 import RoadLightingLayout from "@/components/RoadLightingLayout";
@@ -29,7 +30,7 @@ import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
 import ProjectsMenu from "@/components/ProjectsMenu";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_TYPES, SEGMENT_COLORS, COLOR_OPTIONS, createDefaultZoneLightingData, ZoneLightingData, ProjectDocument } from "@/types/solux";
+import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_COLORS, createDefaultZoneLightingData, formFieldsToZoneData, zoneDataToFormFields, segmentTypeLabel, ProjectDocument } from "@/types/solux";
 import { saveSubmission } from "@/lib/submissions";
 import { geocodeCity, resolveWinterSolsticeDusk } from "@/lib/solarNight";
 import { buildProjectKml, downloadKml } from "@/lib/kml";
@@ -37,30 +38,6 @@ import { rescaleSegmentsToTotal, snapHalf } from "@/lib/program";
 import { saveDraft, loadDraft, clearDraft, DraftEnvelope } from "@/lib/draft";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-
-// Snapshot the top-level "mirror" lighting fields into a ZoneLightingData object.
-// Used to seed the first zone with values the user typed before any zone existed.
-const mirrorToZoneData = (f: SoluxForm): ZoneLightingData => ({
-  avgLux: f.avgLux,
-  uniformity: f.uniformity,
-  minLux: f.minLux,
-  cct: f.cct,
-  lightingSegments: f.lightingSegments.map((s) => ({ ...s })),
-  lightingNightHours: f.lightingNightHours,
-  morningTimeH: f.morningTimeH,
-  morningIntensityPct: f.morningIntensityPct,
-  product: f.product,
-  luminaireHeight: f.luminaireHeight,
-  spacing: f.spacing,
-  optimizeHeight: f.optimizeHeight,
-  optimizeSpacing: f.optimizeSpacing,
-  batteryChoice: f.batteryChoice,
-  batteryWh: f.batteryWh,
-  panelChoice: f.panelChoice,
-  panelWp: f.panelWp,
-  alternativeAccepted: f.alternativeAccepted,
-  alternativeDetails: f.alternativeDetails,
-});
 
 // N2/F3 — does the given mode hold real work worth confirming before we clear it?
 const hasRoadData = (f: SoluxForm) =>
@@ -558,6 +535,14 @@ const SoluxIntake = () => {
         title: l("Calcul effectué", "Calculation done"),
         description: `${l("Nuit la plus longue", "Longest night")}: ${nightH}h · ${l("Coucher", "Sunset")}: ${res.hhmm} (${res.basis === "legal" ? l("heure légale", "legal time") : l("heure solaire", "solar time")})`,
       });
+    } catch (err) {
+      // Q2 — geocode/timezone helpers swallow their own errors, but guard any
+      // unexpected throw so the user gets feedback instead of a silent no-op.
+      toast({
+        title: l("Échec du calcul", "Calculation failed"),
+        description: err instanceof Error ? err.message : l("Réessayez ou placez un point sur la carte.", "Try again, or drop a point on the map."),
+        variant: "destructive",
+      });
     } finally {
       setComputingDusk(false);
     }
@@ -580,7 +565,7 @@ const SoluxIntake = () => {
         if (!nextZoneLightingData[zone.id]) {
           nextZoneLightingData[zone.id] =
             seedFromMirror && zone.id === firstNewZoneId
-              ? mirrorToZoneData(current)
+              ? formFieldsToZoneData(current)
               : createDefaultZoneLightingData();
           changed = true;
         }
@@ -604,25 +589,7 @@ const SoluxIntake = () => {
       return {
         ...current,
         assignedArea: fallbackZoneId,
-        avgLux: zoneData.avgLux,
-        uniformity: zoneData.uniformity,
-        minLux: zoneData.minLux,
-        cct: zoneData.cct,
-        lightingSegments: zoneData.lightingSegments.map((segment) => ({ ...segment })),
-        lightingNightHours: zoneData.lightingNightHours,
-        morningTimeH: zoneData.morningTimeH,
-        morningIntensityPct: zoneData.morningIntensityPct,
-        product: zoneData.product,
-        luminaireHeight: zoneData.luminaireHeight,
-        spacing: zoneData.spacing,
-        optimizeHeight: zoneData.optimizeHeight,
-        optimizeSpacing: zoneData.optimizeSpacing,
-        batteryChoice: zoneData.batteryChoice,
-        batteryWh: zoneData.batteryWh,
-        panelChoice: zoneData.panelChoice,
-        panelWp: zoneData.panelWp,
-        alternativeAccepted: zoneData.alternativeAccepted,
-        alternativeDetails: zoneData.alternativeDetails,
+        ...zoneDataToFormFields(zoneData),
         zoneLightingData: nextZoneLightingData,
       };
     });
@@ -808,25 +775,7 @@ const SoluxIntake = () => {
                           setForm((current) => ({
                             ...current,
                             assignedArea: v,
-                            avgLux: saved.avgLux,
-                            uniformity: saved.uniformity,
-                            minLux: saved.minLux,
-                            cct: saved.cct,
-                            lightingSegments: saved.lightingSegments.map((segment) => ({ ...segment })),
-                            lightingNightHours: saved.lightingNightHours,
-                            morningTimeH: saved.morningTimeH,
-                            morningIntensityPct: saved.morningIntensityPct,
-                            product: saved.product,
-                            luminaireHeight: saved.luminaireHeight,
-                            spacing: saved.spacing,
-                            optimizeHeight: saved.optimizeHeight,
-                            optimizeSpacing: saved.optimizeSpacing,
-                            batteryChoice: saved.batteryChoice,
-                            batteryWh: saved.batteryWh,
-                            panelChoice: saved.panelChoice,
-                            panelWp: saved.panelWp,
-                            alternativeAccepted: saved.alternativeAccepted,
-                            alternativeDetails: saved.alternativeDetails,
+                            ...zoneDataToFormFields(saved),
                           }));
                         }}>
                           <SelectTrigger><SelectValue placeholder={l("Sélectionner une zone", "Select a zone")} /></SelectTrigger>
@@ -860,14 +809,7 @@ const SoluxIntake = () => {
                         </div>
                         <div className="space-y-2">
                           <Label>{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
-                          <Select value={form.cct} onValueChange={(v) => syncAssignedZoneData({ cct: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="3000K">3000K</SelectItem>
-                              <SelectItem value="4000K">4000K</SelectItem>
-                              <SelectItem value="5000K">5000K</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <CctSelect value={form.cct} onChange={(v) => syncAssignedZoneData({ cct: v })} />
                         </div>
                       </div>
                     </section>
@@ -911,8 +853,7 @@ const SoluxIntake = () => {
                       <section>
                         <h3 className="text-lg font-semibold mb-4">{l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}</h3>
                         {form.roadProfile.map((seg, i) => {
-                          const segInfo = SEGMENT_TYPES.find((t) => t.value === seg.type);
-                          const segLabel = segInfo ? (lang === "fr" ? segInfo.labelFr : segInfo.labelEn) : seg.type;
+                          const segLabel = segmentTypeLabel(seg.type, lang);
                           const segLighting = form.roadSegmentLighting[seg.id] || { avgLux: "", uniformity: "", minLux: "", cct: "4000K" };
                           const setSeg = (patch: Partial<typeof segLighting>) => onChange("roadSegmentLighting", {
                             ...form.roadSegmentLighting,
@@ -941,14 +882,7 @@ const SoluxIntake = () => {
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-xs">CCT</Label>
-                                    <Select value={segLighting.cct} onValueChange={(v) => setSeg({ cct: v })}>
-                                      <SelectTrigger><SelectValue /></SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="3000K">3000K</SelectItem>
-                                        <SelectItem value="4000K">4000K</SelectItem>
-                                        <SelectItem value="5000K">5000K</SelectItem>
-                                      </SelectContent>
-                                    </Select>
+                                    <CctSelect value={segLighting.cct} onChange={(v) => setSeg({ cct: v })} />
                                   </div>
                                 </div>
                               </CardContent>

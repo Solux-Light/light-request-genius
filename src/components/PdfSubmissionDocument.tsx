@@ -1,18 +1,11 @@
 import { forwardRef } from "react";
 import {
-  SoluxForm, SEGMENT_TYPES, SEGMENT_COLORS, LightingSegment,
-  formatHeight, PROFILE_SEGMENT_KINDS, ProfileProgram,
+  SoluxForm, SEGMENT_COLORS, LightingSegment,
+  formatHeight, ProfileProgram, productLabel, segmentTypeLabel, profileKindLabel,
 } from "@/types/solux";
 import { earthWebUrl } from "@/lib/kml";
+import { segmentColor } from "@/lib/program";
 import ProjectLiveMapPreview from "@/components/ProjectLiveMapPreview";
-
-const PRODUCT_LABELS: Record<string, string> = {
-  SSLXPRO: "SOLUX PRO",
-  SSLXMAX: "SOLUX MAX",
-  SSLXULTRA: "SOLUX ULTRA",
-  SSLXMINI: "SOLUX MINI",
-  SSLXSTREET: "SOLUX STREET",
-};
 
 interface Props {
   form: SoluxForm;
@@ -22,12 +15,6 @@ interface Props {
   mapPreviewMode?: "live" | "interactive" | "placeholder";
   apiKey?: string;
 }
-
-const segColor = (seg: LightingSegment) => {
-  if (seg.mode === "sensor") return "rgb(137, 250, 140)";
-  if (seg.intensity === 100) return "#111";
-  return "rgb(170, 173, 184)";
-};
 
 // One period as compact text, including the sensor energy parameters.
 const periodText = (seg: LightingSegment): string =>
@@ -45,10 +32,7 @@ const programSummary = (p: ProfileProgram): string => {
 const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
   ({ form, salesName, nowStr, lang, mapPreviewMode = "placeholder", apiKey }, ref) => {
     const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
-    const getSegLabel = (type: string) => {
-      const t = SEGMENT_TYPES.find((s) => s.value === type);
-      return t ? (lang === "fr" ? t.labelFr : t.labelEn) : type;
-    };
+    const getSegLabel = (type: string) => segmentTypeLabel(type, lang);
 
     // Resolve a zone id to its human name (map areas + PDF zones), so the PDF
     // shows "Parking nord" instead of a raw UUID.
@@ -238,7 +222,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                   {rows.map((r) => (
                     <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                       <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
-                      <td style={td}>{PRODUCT_LABELS[r.zd.product] || r.zd.product || "—"}</td>
+                      <td style={td}>{productLabel(r.zd.product)}</td>
                       <td style={td}>{formatHeight(r.zd.luminaireHeight, lang)}</td>
                       <td style={td}>{r.zd.spacing ? `${r.zd.spacing}m` : "—"}</td>
                       <td style={td}>{r.zd.batteryChoice === "custom" ? `${r.zd.batteryWh}Wh` : "Std"}</td>
@@ -303,7 +287,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
               <tbody>
                 {[
                   [l("Disposition", "Arrangement"), form.roadLighting.arrangement],
-                  [l("Luminaire", "Luminaire"), PRODUCT_LABELS[form.roadLighting.luminaire] || form.roadLighting.luminaire || "—"],
+                  [l("Luminaire", "Luminaire"), productLabel(form.roadLighting.luminaire)],
                   [l("Hauteur du mât", "Pole Height"),
                     form.roadLighting.pole_height_mode === "range"
                       ? `${form.roadLighting.pole_height_min ?? "—"}–${form.roadLighting.pole_height_max ?? "—"} m (${l("plage — le Study Lab choisit la hauteur optimale", "range — Study Lab picks the best height")})`
@@ -375,10 +359,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                     ))}
                   </tr>
                   {form.roadDocuments.map((doc, di) => {
-                    const kindName = (kind: string) => {
-                      const k = PROFILE_SEGMENT_KINDS.find((s) => s.value === kind);
-                      return k ? (lang === "fr" ? k.labelFr : k.labelEn) : kind;
-                    };
+                    const kindName = (kind: string) => profileKindLabel(kind, lang);
                     const p = doc.config.program;
                     return (
                       <tr key={doc.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -400,10 +381,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             {form.roadDocuments.length === 0 ? (
               <p style={{ color: "#999", fontStyle: "italic" }}>{l("Aucun document fourni", "No documents provided")}</p>
             ) : form.roadDocuments.map((doc, di) => {
-              const segKindName = (kind: string) => {
-                const k = PROFILE_SEGMENT_KINDS.find((s) => s.value === kind);
-                return k ? (lang === "fr" ? k.labelFr : k.labelEn) : kind;
-              };
+              const segKindName = (kind: string) => profileKindLabel(kind, lang);
               const cfg = doc.config;
               return (
                 <div key={doc.id} style={{ marginBottom: 20, padding: 10, border: "1px solid #e5e7eb", borderRadius: 4, pageBreakInside: "avoid" }}>
@@ -518,7 +496,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
               {form.lightingSegments.map((seg) => (
                 <div key={seg.id} style={{
                   width: `${(seg.hours / form.lightingNightHours) * 100}%`,
-                  backgroundColor: segColor(seg),
+                  backgroundColor: segmentColor(seg),
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -551,7 +529,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               {[
-                [l("Produit", "Product"), PRODUCT_LABELS[form.product] || form.product || "—"],
+                [l("Produit", "Product"), productLabel(form.product)],
                 [l("Hauteur luminaire", "Luminaire Height"), formatHeight(form.luminaireHeight, lang)],
                 [l("Espacement", "Spacing"), form.spacing ? `${form.spacing}m` : "—"],
                 [l("Batterie", "Battery"), form.batteryChoice === "custom" ? `Custom: ${form.batteryWh}Wh` : "Standard"],
@@ -575,7 +553,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
             </h2>
             {form.productAssignments.map((a, i) => (
               <div key={a.id} style={{ marginBottom: 8, padding: 8, border: "1px solid #e5e7eb", borderRadius: 4 }}>
-                <p><strong>{a.zone || `Zone ${i + 1}`}</strong> → {PRODUCT_LABELS[a.product] || a.product}</p>
+                <p><strong>{a.zone || `Zone ${i + 1}`}</strong> → {productLabel(a.product)}</p>
                 {a.avgLux && <p>{l("Lux moyen", "Avg Lux")}: {a.avgLux}</p>}
                 {a.uniformity && <p>{l("Uniformité", "Uniformity")}: {a.uniformity}</p>}
                 {a.minLux && <p>{l("Lux min", "Min Lux")}: {a.minLux}</p>}

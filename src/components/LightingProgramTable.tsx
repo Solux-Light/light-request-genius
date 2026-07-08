@@ -11,7 +11,7 @@ import {
   BOOST_DURATION_OPTIONS,
   DETECTION_ESTIMATE_OPTIONS,
 } from "@/types/solux";
-import { rescaleSegmentsToTotal } from "@/lib/program";
+import { rescaleSegmentsToTotal, segmentColor } from "@/lib/program";
 
 // Compact, data-entry-oriented lighting program editor for profiles.
 // Engineers know the values they want: direct numeric inputs in a dense table,
@@ -23,12 +23,6 @@ interface Props {
   onChange: (next: ProfileProgram) => void;
   lang?: "fr" | "en";
 }
-
-const segColor = (seg: LightingSegment) => {
-  if (seg.mode === "sensor") return "rgb(137, 250, 140)";
-  if ((seg.intensity ?? 100) === 100) return "#111";
-  return "rgb(170, 173, 184)";
-};
 
 const LightingProgramTable = memo(function LightingProgramTable({ value, onChange, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
@@ -220,7 +214,7 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
           {value.segments.map((seg) => (
             <div
               key={seg.id}
-              style={{ width: `${(seg.hours / Math.max(1, value.nightHours)) * 100}%`, backgroundColor: segColor(seg) }}
+              style={{ width: `${(seg.hours / Math.max(1, value.nightHours)) * 100}%`, backgroundColor: segmentColor(seg) }}
               title={`${seg.hours}h ${seg.mode === "sensor" ? `${seg.min ?? 0}→${seg.max ?? 100}%` : `${seg.intensity ?? 100}%`}`}
             />
           ))}

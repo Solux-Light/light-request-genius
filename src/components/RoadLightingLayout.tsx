@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LightingSetup, RoadProfile, PRODUCT_OPTIONS, SEGMENT_COLORS } from "@/types/solux";
+import { LightingSetup, RoadProfile, PRODUCT_OPTIONS, productLabel, SEGMENT_COLORS } from "@/types/solux";
 
 interface Props {
   value: LightingSetup;
@@ -106,7 +106,7 @@ const RoadLightingLayout = memo(function RoadLightingLayout({ value, onChange, r
           <Select value={value.luminaire} onValueChange={(v) => update("luminaire", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

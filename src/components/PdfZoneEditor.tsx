@@ -19,7 +19,7 @@ interface Props {
 const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en", embedded = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<import("pdfjs-dist").PDFDocumentProxy | null>(null);
   const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
   const isImage = value.mediaType === "image";
   const [currentPage, setCurrentPage] = useState(1);
@@ -75,7 +75,11 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
     setImgEl(null);
     const loadPdf = async () => {
       const pdfjsLib = await import("pdfjs-dist");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
+      // Q9 — bundle the worker from the installed package (its version always
+      // matches pdfjs-dist, and it works offline / behind a strict CSP) instead
+      // of a hard-pinned cloudflare CDN URL.
+      const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
       const doc = await pdfjsLib.getDocument(value.pdfUrl).promise;
       if (cancelled) return;
       setPdfDoc(doc);

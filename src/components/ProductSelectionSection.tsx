@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
-import { PRODUCT_OPTIONS, ProductAssignment, MapArea } from "@/types/solux";
+import { PRODUCT_OPTIONS, productLabel, ProductAssignment, MapArea } from "@/types/solux";
 import HeightField from "@/components/HeightField";
 
 interface Props {
@@ -122,7 +122,7 @@ const ProductSelectionSection = ({
                 <Select value={row.product} onValueChange={(v) => updateAssignment(row.id, "product", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -203,7 +203,7 @@ const ProductSelectionSection = ({
           <Select value={product} onValueChange={onProductChange}>
             <SelectTrigger><SelectValue placeholder={l("Sélectionner un produit", "Select product")} /></SelectTrigger>
             <SelectContent>
-              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>

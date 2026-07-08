@@ -35,15 +35,17 @@ const mapViewRoughlyEqual = (
   Math.abs(a.center.lat - center.lat) < 1e-6 &&
   Math.abs(a.center.lng - center.lng) < 1e-6;
 
+export interface MapSectionValue {
+  address: string;
+  location?: { lat: number; lng: number } | null;
+  areas: MapArea[];
+  lampposts: MapLamppost[];
+}
+
 interface Props {
   apiKey: string;
-  value: {
-    address: string;
-    location?: { lat: number; lng: number } | null;
-    areas: MapArea[];
-    lampposts: MapLamppost[];
-  };
-  onChange: (val: any) => void;
+  value: MapSectionValue;
+  onChange: (val: MapSectionValue) => void;
   onMapViewChange?: (zoom: number, center: { lat: number; lng: number }) => void;
   lang?: "fr" | "en";
 }

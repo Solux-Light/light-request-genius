@@ -119,6 +119,17 @@ export const PROFILE_SEGMENT_KINDS = [
   { value: "other", labelEn: "Other", labelFr: "Autre" },
 ] as const;
 
+// Q5 — one implementation of the "find the row, pick the fr/en label" lookup
+// that was hand-inlined across the intake page, road builder and PDF.
+export const segmentTypeLabel = (type: string, lang: "fr" | "en"): string => {
+  const t = SEGMENT_TYPES.find((s) => s.value === type);
+  return t ? (lang === "fr" ? t.labelFr : t.labelEn) : type;
+};
+export const profileKindLabel = (kind: string, lang: "fr" | "en"): string => {
+  const k = PROFILE_SEGMENT_KINDS.find((s) => s.value === kind);
+  return k ? (lang === "fr" ? k.labelFr : k.labelEn) : kind;
+};
+
 // A lighting program: night program periods + the fixed Morning Time block.
 // Morning Time always ends at sunrise and is always the FINAL operating period,
 // whatever the seasonal night length (sunrise − morningTimeH → sunrise).
@@ -332,10 +343,33 @@ export type ProductAssignment = {
   spacing?: string;
 };
 
-export const PRODUCT_OPTIONS = [
-  "SSLXPRO", "SSLXPERFORMANCE", "AOSPRO", "AOS PERFORMANCE",
-  "COLARSUN", "KONOS+", "TOTEM", "TOTEM +", "Relight"
+// F6 — ONE canonical catalogue for the zone / road-luminaire product picker.
+// `id` is the value stored on the form (form.product, zoneLightingData.product,
+// productAssignments[].product, roadLighting.luminaire); `label` is the human
+// name shown everywhere (the picker AND the PDF), so the submission document can
+// never render a raw code or a stale label. (The Work-From-PDF-Profile flow uses
+// the family→model catalogue in PRODUCT_FAMILIES.)
+export const PRODUCT_CATALOGUE: { id: string; label: string }[] = [
+  { id: "SSLXPRO", label: "SOLUX PRO" },
+  { id: "SSLXPERFORMANCE", label: "SOLUX PERFORMANCE" },
+  { id: "AOSPRO", label: "AOS PRO+" },
+  { id: "AOS PERFORMANCE", label: "AOS PERFORMANCE" },
+  { id: "COLARSUN", label: "COLARSUN" },
+  { id: "KONOS+", label: "KONOS+" },
+  { id: "TOTEM", label: "TOTEM" },
+  { id: "TOTEM +", label: "TOTEM +" },
+  { id: "Relight", label: "Relight" },
 ];
+
+export const PRODUCT_OPTIONS = PRODUCT_CATALOGUE.map((p) => p.id);
+
+const PRODUCT_LABEL_BY_ID: Record<string, string> = Object.fromEntries(
+  PRODUCT_CATALOGUE.map((p) => [p.id, p.label]),
+);
+
+// Human label for a stored product id; falls back to the id, then a dash.
+export const productLabel = (id: string | undefined | null): string =>
+  (id && PRODUCT_LABEL_BY_ID[id]) || id || "—";
 
 export const SEGMENT_TYPES = [
   { value: "lane", labelEn: "Traffic Lane", labelFr: "Voie de circulation", defaultWidth: 3.5 },
@@ -416,6 +450,43 @@ export const createDefaultZoneLightingData = (): ZoneLightingData => ({
   alternativeDetails: "",
 });
 
+// Q1 — the "current zone" lighting fields live BOTH flat on SoluxForm and inside
+// zoneLightingData[assignedArea]. These two helpers are the single place that
+// copies between the two representations (deep-copying the period array), so the
+// sync sites in the intake page can't drift out of step.
+
+// Snapshot the flat mirror fields (a ZoneLightingData-shaped source, e.g. the
+// form) into a fresh ZoneLightingData — explicit picks so extra form fields
+// aren't dragged along.
+export const formFieldsToZoneData = (f: ZoneLightingData): ZoneLightingData => ({
+  avgLux: f.avgLux,
+  uniformity: f.uniformity,
+  minLux: f.minLux,
+  cct: f.cct,
+  lightingSegments: f.lightingSegments.map((s) => ({ ...s })),
+  lightingNightHours: f.lightingNightHours,
+  morningTimeH: f.morningTimeH,
+  morningIntensityPct: f.morningIntensityPct,
+  product: f.product,
+  luminaireHeight: f.luminaireHeight,
+  spacing: f.spacing,
+  optimizeHeight: f.optimizeHeight,
+  optimizeSpacing: f.optimizeSpacing,
+  batteryChoice: f.batteryChoice,
+  batteryWh: f.batteryWh,
+  panelChoice: f.panelChoice,
+  panelWp: f.panelWp,
+  alternativeAccepted: f.alternativeAccepted,
+  alternativeDetails: f.alternativeDetails,
+});
+
+// The flat mirror fields for a stored ZoneLightingData, ready to spread into
+// setForm (deep-copying the period array so edits don't alias the stored zone).
+export const zoneDataToFormFields = (zd: ZoneLightingData): ZoneLightingData => ({
+  ...zd,
+  lightingSegments: zd.lightingSegments.map((s) => ({ ...s })),
+});
+
 export interface SoluxForm {
   projectName: string;
   clientName: string;
@@ -432,10 +503,6 @@ export interface SoluxForm {
   minLux: string;
   uniformity: string;
   cct: string;
-  scenarioText: string;
-  presenceDetection: boolean;
-  detectionCount: string;
-  detectionDuration: string;
   product: string;
   multiProduct: boolean;
   productAssignments: ProductAssignment[];
@@ -491,10 +558,6 @@ export const defaultForm: SoluxForm = {
   minLux: "",
   uniformity: "",
   cct: "4000K",
-  scenarioText: "",
-  presenceDetection: false,
-  detectionCount: "",
-  detectionDuration: "",
   product: "",
   multiProduct: false,
   productAssignments: [],
