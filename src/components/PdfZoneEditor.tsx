@@ -2,6 +2,7 @@ import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import ConfirmButton from "@/components/ConfirmButton";
+import ColorSwatches from "@/components/ColorSwatches";
 import { Input } from "@/components/ui/input";
 import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload } from "lucide-react";
 import { PdfZoneValue, PdfZone, PdfLamppost, COLOR_OPTIONS, PROJECT_DOCUMENT_ACCEPT, documentKindFromFile, isAnnotatableKind } from "@/types/solux";
@@ -366,17 +367,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1">
-          {COLOR_OPTIONS.map((c) => (
-            <button
-              type="button"
-              key={c}
-              className={`w-6 h-6 rounded-full border-2 ${selectedColor === c ? "border-foreground" : "border-transparent"}`}
-              style={{ backgroundColor: c }}
-              onClick={() => setSelectedColor(c)}
-            />
-          ))}
-        </div>
+        <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
         <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
           <PenTool className="h-4 w-4 mr-1" /> Lasso

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
 import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
+import ColorSwatches from "@/components/ColorSwatches";
 import { getLamppostIconOptions, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
@@ -112,7 +113,12 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, location: parsed });
     }
   };
-  // Google Places Autocomplete
+
+  // Google Places Autocomplete. NOTE: still the legacy `Autocomplete` widget —
+  // migrating to the modern `AutocompleteSuggestion` API is written and ready but
+  // needs "Places API (New)" enabled in the GCP project (currently disabled, so
+  // only this legacy widget resolves). The listener is attached once; the
+  // valueRef/onChangeRef indirection keeps drawn zones from being wiped on select.
   useEffect(() => {
     if (!isLoaded || !addressInputRef.current || autocompleteRef.current) return;
     const ac = new google.maps.places.Autocomplete(addressInputRef.current, {
@@ -123,7 +129,6 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       if (place.geometry?.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        // Read the LATEST value/onChange via refs so drawn zones/lampposts survive.
         const current = valueRef.current;
         const addr = place.formatted_address || place.name || current.address;
         onChangeRef.current({ ...current, address: addr, location: { lat, lng } });
@@ -351,17 +356,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Colors */}
-        <div className="flex gap-1">
-          {COLOR_OPTIONS.map((c) => (
-            <button
-              type="button"
-              key={c}
-              className={`w-6 h-6 rounded-full border-2 ${selectedColor === c ? "border-foreground" : "border-transparent"}`}
-              style={{ backgroundColor: c }}
-              onClick={() => setSelectedColor(c)}
-            />
-          ))}
-        </div>
+        <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
         {/* Tools */}
         <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
@@ -539,17 +534,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                     onChange={(e) => setEditingName(e.target.value)}
                     className="h-7 text-sm flex-1"
                   />
-                  <div className="flex gap-1">
-                    {COLOR_OPTIONS.map((c) => (
-                      <button
-                        type="button"
-                        key={c}
-                        className={`w-4 h-4 rounded-full border ${editingColor === c ? "border-foreground" : "border-transparent"}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => setEditingColor(c)}
-                      />
-                    ))}
-                  </div>
+                  <ColorSwatches value={editingColor} onChange={setEditingColor} size="sm" />
                   <Button type="button" size="sm" variant="ghost" onClick={saveEditing}>✓</Button>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setEditingAreaId(null)}>✕</Button>
                 </>

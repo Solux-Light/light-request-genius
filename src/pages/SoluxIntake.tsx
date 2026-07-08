@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { uid, deepClone } from "@/lib/utils";
+import { deepClone } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -20,17 +19,19 @@ import { Home, Send, Globe, MessageSquareText } from "lucide-react";
 import GoogleMapSection from "@/components/GoogleMapSection";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
 import ProductSelectionSection from "@/components/ProductSelectionSection";
+import MultiProductSection from "@/components/MultiProductSection";
 import LightingProgramTable from "@/components/LightingProgramTable";
 import CctSelect from "@/components/CctSelect";
 import StepHeader from "@/components/StepHeader";
 import RoadBuilder from "@/components/RoadBuilder";
 import RoadLightingLayout from "@/components/RoadLightingLayout";
+import RoadPerSegmentLevels from "@/components/RoadPerSegmentLevels";
 import ProjectDocumentsSection from "@/components/ProjectDocumentsSection";
 import PdfSubmissionDocument from "@/components/PdfSubmissionDocument";
 import PdfPreviewModal from "@/components/PdfPreviewModal";
 import PdfExportButton from "@/components/PdfExportButton";
 import ProjectsMenu from "@/components/ProjectsMenu";
-import { SoluxForm, defaultForm, defaultLightingSetup, SEGMENT_COLORS, createDefaultZoneLightingData, formFieldsToZoneData, zoneDataToFormFields, segmentTypeLabel, ProjectDocument } from "@/types/solux";
+import { SoluxForm, defaultForm, defaultLightingSetup, createDefaultZoneLightingData, formFieldsToZoneData, zoneDataToFormFields, ProjectDocument } from "@/types/solux";
 import { saveSubmission } from "@/lib/submissions";
 import { geocodeCity, resolveWinterSolsticeDusk } from "@/lib/solarNight";
 import { buildProjectKml, downloadKml } from "@/lib/kml";
@@ -223,6 +224,7 @@ const SoluxIntake = () => {
     });
   }, []);
   const handleRoadLightingChange = useCallback((v: SoluxForm["roadLighting"]) => onChange("roadLighting", v), [onChange]);
+  const handleRoadSegmentLightingChange = useCallback((v: SoluxForm["roadSegmentLighting"]) => onChange("roadSegmentLighting", v), [onChange]);
   const mapValue = useMemo(() => ({
     address: form.address,
     location: form.location,
@@ -847,50 +849,13 @@ const SoluxIntake = () => {
                       />
                     </section>
 
-                    {/* Per-segment lighting levels — keyed by segment id so two
-                        segments of the same type can carry different levels (F2). */}
-                    {form.roadProfile.length > 0 && (
-                      <section>
-                        <h3 className="text-lg font-semibold mb-4">{l("Niveaux d'éclairage par segment", "Per-Segment Lighting Levels")}</h3>
-                        {form.roadProfile.map((seg, i) => {
-                          const segLabel = segmentTypeLabel(seg.type, lang);
-                          const segLighting = form.roadSegmentLighting[seg.id] || { avgLux: "", uniformity: "", minLux: "", cct: "4000K" };
-                          const setSeg = (patch: Partial<typeof segLighting>) => onChange("roadSegmentLighting", {
-                            ...form.roadSegmentLighting,
-                            [seg.id]: { ...segLighting, ...patch },
-                          });
-                          return (
-                            <Card key={seg.id} className="mb-4">
-                              <CardContent className="p-4">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: SEGMENT_COLORS[seg.type] }} />
-                                  <span className="font-medium">{segLabel}</span>
-                                  <span className="text-xs text-muted-foreground">#{i + 1} · {seg.width}m</span>
-                                </div>
-                                <div className="grid md:grid-cols-2 gap-3">
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">{l("Lux moyen", "Average Lux")}</Label>
-                                    <Input value={segLighting.avgLux} onChange={(e) => setSeg({ avgLux: e.target.value })} placeholder="15" />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">{l("Uniformité", "Uniformity")}</Label>
-                                    <Input value={segLighting.uniformity} onChange={(e) => setSeg({ uniformity: e.target.value })} placeholder="0.6" />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">{l("Lux min", "Min Lux")}</Label>
-                                    <Input value={segLighting.minLux} onChange={(e) => setSeg({ minLux: e.target.value })} placeholder="4" />
-                                  </div>
-                                  <div className="space-y-1">
-                                    <Label className="text-xs">CCT</Label>
-                                    <CctSelect value={segLighting.cct} onChange={(v) => setSeg({ cct: v })} />
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </section>
-                    )}
+                    {/* Per-segment lighting levels — keyed by segment id (F2). */}
+                    <RoadPerSegmentLevels
+                      roadProfile={form.roadProfile}
+                      values={form.roadSegmentLighting}
+                      onChange={handleRoadSegmentLightingChange}
+                      lang={lang}
+                    />
                     </TabsContent>
 
                     <TabsContent value="pdf_profile" className="mt-0">
@@ -1014,67 +979,7 @@ const SoluxIntake = () => {
                 {/* Section 6: Multi-Product Toggle — zone-only concept (U3) */}
                 {form.projectType === "zone" && (
                 <>
-                <section>
-                  <div className="bg-[hsl(var(--callout))] rounded-lg p-4 md:p-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <Label className="text-lg md:text-xl font-semibold">{l("Produits multiples", "Multiple Products")}</Label>
-                        <p className="text-sm text-muted-foreground">
-                          {l("Attribuez différents produits à différentes zones.", "Assign different products to different zones.")}
-                        </p>
-                      </div>
-                      <Switch
-                        className="scale-110 md:scale-125"
-                        checked={form.multiProduct}
-                        onCheckedChange={(v) => {
-                          onChange("multiProduct", v);
-                          if (v && form.productAssignments.length === 0) {
-                            onChange("productAssignments", [{
-                              id: uid(),
-                              zone: "",
-                              product: form.product || "SSLXPRO",
-                            }]);
-                          }
-                        }}
-                      />
-                    </div>
-                    {form.multiProduct && (
-                      <div className="mt-4">
-                        <ProductSelectionSection
-                          product={form.product}
-                          onProductChange={(v) => onChange("product", v)}
-                          luminaireHeight={form.luminaireHeight}
-                          onLuminaireHeightChange={(v) => onChange("luminaireHeight", v)}
-                          spacing={form.spacing}
-                          onSpacingChange={(v) => onChange("spacing", v)}
-                          optimizeHeight={form.optimizeHeight}
-                          onOptimizeHeightChange={(v) => onChange("optimizeHeight", v)}
-                          optimizeSpacing={form.optimizeSpacing}
-                          onOptimizeSpacingChange={(v) => onChange("optimizeSpacing", v)}
-                          batteryChoice={form.batteryChoice}
-                          onBatteryChoiceChange={(v) => onChange("batteryChoice", v)}
-                          batteryWh={form.batteryWh}
-                          onBatteryWhChange={(v) => onChange("batteryWh", v)}
-                          panelChoice={form.panelChoice}
-                          onPanelChoiceChange={(v) => onChange("panelChoice", v)}
-                          panelWp={form.panelWp}
-                          onPanelWpChange={(v) => onChange("panelWp", v)}
-                          alternativeAccepted={form.alternativeAccepted}
-                          onAlternativeAcceptedChange={(v) => onChange("alternativeAccepted", v)}
-                          alternativeDetails={form.alternativeDetails}
-                          onAlternativeDetailsChange={(v) => onChange("alternativeDetails", v)}
-                          productAssignments={form.productAssignments}
-                          onProductAssignmentsChange={(v) => onChange("productAssignments", v)}
-                          mapAreas={form.areas}
-                          assignmentsOnly
-                          hideMultiToggle
-                          lang={lang}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </section>
-
+                <MultiProductSection form={form} onChange={onChange} lang={lang} />
                 <Separator />
                 </>
                 )}
