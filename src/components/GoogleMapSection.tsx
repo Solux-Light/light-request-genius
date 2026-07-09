@@ -1,23 +1,52 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { uid } from "@/lib/utils";
 import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
 import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
+import ColorSwatches from "@/components/ColorSwatches";
 import { getLamppostIconOptions, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
+import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 const MAP_CLICK_SUPPRESSION_MS = 250;
+const MAP_VIEW_DEBOUNCE_MS = 500;
+// Taller map now that the page uses the full widescreen width — more room to
+// draw and review project areas comfortably.
+const MAP_CONTAINER_STYLE = { width: "100%", height: "640px", borderRadius: "0.5rem" } as const;
+
+const debounce = <A extends unknown[]>(fn: (...args: A) => void, ms: number) => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const debounced = (...args: A) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+  debounced.cancel = () => clearTimeout(timer);
+  return debounced;
+};
+
+const mapViewRoughlyEqual = (
+  a: { zoom: number; center: { lat: number; lng: number } } | null,
+  zoom: number,
+  center: { lat: number; lng: number }
+) =>
+  a !== null &&
+  a.zoom === zoom &&
+  Math.abs(a.center.lat - center.lat) < 1e-6 &&
+  Math.abs(a.center.lng - center.lng) < 1e-6;
+
+export interface MapSectionValue {
+  address: string;
+  location?: { lat: number; lng: number } | null;
+  areas: MapArea[];
+  lampposts: MapLamppost[];
+}
 
 interface Props {
   apiKey: string;
-  value: {
-    address: string;
-    location?: { lat: number; lng: number } | null;
-    areas: MapArea[];
-    lampposts: MapLamppost[];
-  };
-  onChange: (val: any) => void;
+  value: MapSectionValue;
+  onChange: (val: MapSectionValue) => void;
   onMapViewChange?: (zoom: number, center: { lat: number; lng: number }) => void;
   lang?: "fr" | "en";
 }
@@ -37,6 +66,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
   const addressInputRef = useRef<HTMLInputElement | null>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const suppressMapClickUntilRef = useRef(0);
+  // The Places autocomplete listener is attached once; without these refs it would
+  // close over the first-render value/onChange and wipe any zones drawn afterwards
+  // when the user picks an address (a stale-closure data-loss bug).
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
@@ -52,8 +88,12 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
-  const initialCenter = useMemo(() => value.location || { lat: 46.2276, lng: 2.2137 }, []);
-  const initialZoom = useMemo(() => value.location ? 16 : 5, []);
+  const defaultCenter = useMemo(
+    () => value.location || { lat: 46.2276, lng: 2.2137 },
+    [value.location?.lat, value.location?.lng]
+  );
+  const defaultZoom = useMemo(() => (value.location ? 16 : 5), [value.location?.lat, value.location?.lng]);
+  const lastMapViewRef = useRef<{ zoom: number; center: { lat: number; lng: number } } | null>(null);
 
   const handleAddressKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -73,7 +113,12 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       onChange({ ...value, location: parsed });
     }
   };
-  // Google Places Autocomplete
+
+  // Google Places Autocomplete. NOTE: still the legacy `Autocomplete` widget —
+  // migrating to the modern `AutocompleteSuggestion` API is written and ready but
+  // needs "Places API (New)" enabled in the GCP project (currently disabled, so
+  // only this legacy widget resolves). The listener is attached once; the
+  // valueRef/onChangeRef indirection keeps drawn zones from being wiped on select.
   useEffect(() => {
     if (!isLoaded || !addressInputRef.current || autocompleteRef.current) return;
     const ac = new google.maps.places.Autocomplete(addressInputRef.current, {
@@ -84,8 +129,9 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       if (place.geometry?.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        const addr = place.formatted_address || place.name || value.address;
-        onChange({ ...value, address: addr, location: { lat, lng } });
+        const current = valueRef.current;
+        const addr = place.formatted_address || place.name || current.address;
+        onChangeRef.current({ ...current, address: addr, location: { lat, lng } });
         mapRef.current?.panTo({ lat, lng });
         mapRef.current?.setZoom(17);
       }
@@ -95,24 +141,117 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
-  }, []);
+    map.setMapTypeId(mapType);
+    // GoogleMap from @react-google-maps/api does NOT honour defaultCenter/defaultZoom,
+    // so without this the map starts with no viewport and paints a grey canvas until
+    // the first pan. Set the initial view explicitly here (uncontrolled: we don't pass
+    // center/zoom props, which would fight the user's panning).
+    map.setCenter(defaultCenter);
+    map.setZoom(defaultZoom);
+  }, [mapType, defaultCenter, defaultZoom]);
+
+  const debouncedMapViewChange = useMemo(() => {
+    if (!onMapViewChange) return null;
+    return debounce((zoom: number, center: { lat: number; lng: number }) => {
+      if (mapViewRoughlyEqual(lastMapViewRef.current, zoom, center)) return;
+      lastMapViewRef.current = { zoom, center };
+      onMapViewChange(zoom, center);
+    }, MAP_VIEW_DEBOUNCE_MS);
+  }, [onMapViewChange]);
+
+  useEffect(() => () => debouncedMapViewChange?.cancel(), [debouncedMapViewChange]);
+
+  useEffect(() => {
+    if (!value.location || !mapRef.current) return;
+    mapRef.current.panTo(value.location);
+    const currentZoom = mapRef.current.getZoom();
+    if (currentZoom === undefined || currentZoom < 14) {
+      mapRef.current.setZoom(16);
+    }
+  }, [value.location?.lat, value.location?.lng]);
+
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setMapTypeId(mapType);
+    }
+  }, [mapType]);
 
   const onMapIdle = useCallback(() => {
-    if (mapRef.current && onMapViewChange) {
-      const z = mapRef.current.getZoom();
-      const c = mapRef.current.getCenter();
-      if (z !== undefined && c) {
-        onMapViewChange(z, { lat: c.lat(), lng: c.lng() });
-      }
+    if (!mapRef.current || !debouncedMapViewChange) return;
+    const z = mapRef.current.getZoom();
+    const c = mapRef.current.getCenter();
+    if (z !== undefined && c) {
+      debouncedMapViewChange(z, { lat: c.lat(), lng: c.lng() });
     }
-  }, [onMapViewChange]);
+  }, [debouncedMapViewChange]);
+
+  const mapOptions = useMemo(
+    () => ({
+      streetViewControl: false,
+      mapTypeControl: false,
+      fullscreenControl: false,
+      gestureHandling: "greedy" as const,
+      tilt: 0,
+      heading: 0,
+      draggable: activeTool !== "lasso",
+      draggableCursor:
+        activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
+    }),
+    [activeTool]
+  );
+
+  const polygonOptionsByArea = useMemo(
+    () =>
+      Object.fromEntries(
+        value.areas.map((area) => [
+          area.id,
+          {
+            fillColor: area.color,
+            fillOpacity: 0.3,
+            strokeColor: area.color,
+            strokeWeight: 2,
+            clickable: true,
+          },
+        ])
+      ),
+    [value.areas]
+  );
+
+  const lassoPolylineOptions = useMemo(
+    () => ({ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8 }),
+    [selectedColor]
+  );
+
+  const selectionRingIcon = useMemo(
+    () => ({
+      path: MAP_SYMBOL_CIRCLE,
+      fillOpacity: 0,
+      strokeColor: LAMPPOST_SELECTION_STROKE,
+      strokeOpacity: 1,
+      strokeWeight: 2,
+      scale: 24,
+    }),
+    []
+  );
+
+  const lassoPointIcon = useCallback(
+    (pointIndex: number) => ({
+      path: MAP_SYMBOL_CIRCLE,
+      fillColor: selectedColor,
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 1.5,
+      scale: pointIndex === 0 ? 7 : 5,
+    }),
+    [selectedColor]
+  );
 
   // Close the current lasso polygon
   const closeLasso = useCallback(() => {
     if (lassoPath.length >= 3) {
       const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
       const newArea: MapArea = {
-        id: crypto.randomUUID(),
+        id: uid(),
         type: "polygon",
         paths: lassoPath,
         color: selectedColor,
@@ -134,7 +273,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
       const newLamppost: MapLamppost = {
-        id: crypto.randomUUID(),
+        id: uid(),
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
         type: lamppostType,
@@ -217,17 +356,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Colors */}
-        <div className="flex gap-1">
-          {COLOR_OPTIONS.map((c) => (
-            <button
-              type="button"
-              key={c}
-              className={`w-6 h-6 rounded-full border-2 ${selectedColor === c ? "border-foreground" : "border-transparent"}`}
-              style={{ backgroundColor: c }}
-              onClick={() => setSelectedColor(c)}
-            />
-          ))}
-        </div>
+        <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
         {/* Tools */}
         <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
@@ -262,39 +391,21 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
       </div>
 
       {/* Map */}
-      <div className="relative rounded-lg overflow-hidden border border-border">
+      <div className="relative rounded-lg border border-border">
         <GoogleMap
-          mapContainerStyle={{ width: "100%", height: "500px" }}
-          center={initialCenter}
-          zoom={initialZoom}
+          mapContainerStyle={MAP_CONTAINER_STYLE}
           onLoad={onMapLoad}
           onIdle={onMapIdle}
           onClick={handleMapClick}
           onDblClick={handleMapDblClick}
-          options={{
-            streetViewControl: false,
-            mapTypeControl: false,
-            fullscreenControl: false,
-            gestureHandling: "greedy",
-            tilt: 0,
-            heading: 0,
-            mapTypeId: mapType,
-            draggable: activeTool !== "lasso",
-            draggableCursor: activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
-          }}
+          options={mapOptions}
         >
           {/* Polygons */}
           {value.areas.map((area) => (
             <PolygonF
               key={area.id}
               paths={area.paths}
-              options={{
-                fillColor: area.color,
-                fillOpacity: 0.3,
-                strokeColor: area.color,
-                strokeWeight: 2,
-                clickable: true,
-              }}
+              options={polygonOptionsByArea[area.id]}
               onClick={() => startEditing(area)}
             />
           ))}
@@ -304,20 +415,13 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             <>
               <PolylineF
                 path={[...lassoPath, lassoPath[0]]}
-                options={{ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8 }}
+                options={lassoPolylineOptions}
               />
               {lassoPath.map((pt, i) => (
                 <MarkerF
                   key={`lasso-pt-${i}`}
                   position={pt}
-                  icon={{
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: selectedColor,
-                    fillOpacity: 1,
-                    strokeColor: "#fff",
-                    strokeWeight: 1.5,
-                    scale: i === 0 ? 7 : 5,
-                  }}
+                  icon={lassoPointIcon(i)}
                   onClick={() => {
                     if (i === 0 && lassoPath.length >= 3) closeLasso();
                   }}
@@ -328,26 +432,23 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
           {/* Lampposts */}
           {(value.lampposts || []).map((lp) => (
-            <MarkerF
-              key={`${lp.id}-${lp.rotation || 0}-${selectedLamppostId === lp.id ? "selected" : "idle"}`}
-              position={{ lat: lp.lat, lng: lp.lng }}
-              draggable
-              onDragEnd={(e) => {
-                if (e.latLng) {
-                  suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
-                  onChange({
-                    ...value,
-                    lampposts: (value.lampposts || []).map((l) =>
-                      l.id === lp.id ? { ...l, lat: e.latLng!.lat(), lng: e.latLng!.lng() } : l
-                    ),
-                  });
-                }
-              }}
-              icon={getLamppostIconOptions({ type: lp.type, rotation: lp.rotation || 0, selected: selectedLamppostId === lp.id })}
-              onClick={() => {
+            <LamppostMarker
+              key={lp.id}
+              lamppost={lp}
+              selected={selectedLamppostId === lp.id}
+              onSelect={() => {
                 suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
                 setSelectedLamppostId(selectedLamppostId === lp.id ? null : lp.id);
                 setActiveTool("select");
+              }}
+              onDragEnd={(lat, lng) => {
+                suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
+                onChange({
+                  ...value,
+                  lampposts: (value.lampposts || []).map((l) =>
+                    l.id === lp.id ? { ...l, lat, lng } : l
+                  ),
+                });
               }}
             />
           ))}
@@ -358,17 +459,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
             if (!lp) return null;
             return (
               <MarkerF
-                key={`selection-ring-${lp.id}-${lp.rotation || 0}`}
+                key={`selection-ring-${lp.id}`}
                 position={{ lat: lp.lat, lng: lp.lng }}
                 zIndex={999}
-                icon={{
-                  path: google.maps.SymbolPath.CIRCLE,
-                  fillOpacity: 0,
-                  strokeColor: LAMPPOST_SELECTION_STROKE,
-                  strokeOpacity: 1,
-                  strokeWeight: 2,
-                  scale: 24,
-                }}
+                icon={selectionRingIcon}
               />
             );
           })()}
@@ -440,17 +534,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                     onChange={(e) => setEditingName(e.target.value)}
                     className="h-7 text-sm flex-1"
                   />
-                  <div className="flex gap-1">
-                    {COLOR_OPTIONS.map((c) => (
-                      <button
-                        type="button"
-                        key={c}
-                        className={`w-4 h-4 rounded-full border ${editingColor === c ? "border-foreground" : "border-transparent"}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => setEditingColor(c)}
-                      />
-                    ))}
-                  </div>
+                  <ColorSwatches value={editingColor} onChange={setEditingColor} size="sm" />
                   <Button type="button" size="sm" variant="ghost" onClick={saveEditing}>✓</Button>
                   <Button type="button" size="sm" variant="ghost" onClick={() => setEditingAreaId(null)}>✕</Button>
                 </>
@@ -481,5 +565,37 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
     </div>
   );
 };
+
+type LamppostMarkerProps = {
+  lamppost: MapLamppost;
+  selected: boolean;
+  onSelect: () => void;
+  onDragEnd: (lat: number, lng: number) => void;
+};
+
+const LamppostMarker = memo(({ lamppost, selected, onSelect, onDragEnd }: LamppostMarkerProps) => {
+  const icon = useMemo(
+    () =>
+      getLamppostIconOptions({
+        type: lamppost.type,
+        rotation: lamppost.rotation || 0,
+        selected,
+      }),
+    [lamppost.type, lamppost.rotation, selected]
+  );
+
+  return (
+    <MarkerF
+      position={{ lat: lamppost.lat, lng: lamppost.lng }}
+      draggable
+      icon={icon}
+      onClick={onSelect}
+      onDragEnd={(e) => {
+        if (e.latLng) onDragEnd(e.latLng.lat(), e.latLng.lng());
+      }}
+    />
+  );
+});
+LamppostMarker.displayName = "LamppostMarker";
 
 export default GoogleMapSection;

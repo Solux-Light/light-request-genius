@@ -43,6 +43,15 @@ export const getLamppostPath = (type: MapLamppost["type"], rotation = 0) => {
   return [pole, rightArm, rightHead].join(" ");
 };
 
+let lamppostIconAnchor: google.maps.Point | undefined;
+
+const getLamppostIconAnchor = () => {
+  if (!lamppostIconAnchor && typeof google !== "undefined") {
+    lamppostIconAnchor = new google.maps.Point(0, 0);
+  }
+  return lamppostIconAnchor;
+};
+
 export const getLamppostIconOptions = ({
   type,
   rotation = 0,
@@ -51,12 +60,15 @@ export const getLamppostIconOptions = ({
   type: MapLamppost["type"];
   rotation?: number;
   selected?: boolean;
-}): google.maps.Symbol => ({
-  path: getLamppostPath(type, rotation),
-  fillColor: LAMPPOST_FILL,
-  fillOpacity: 1,
-  strokeColor: selected ? LAMPPOST_SELECTION_STROKE : LAMPPOST_STROKE,
-  strokeWeight: selected ? 3 : 2.25,
-  scale: selected ? 1.45 : 1.2,
-  anchor: new google.maps.Point(0, 0),
-});
+}): google.maps.Symbol => {
+  const anchor = getLamppostIconAnchor();
+  return {
+    path: getLamppostPath(type, rotation),
+    fillColor: LAMPPOST_FILL,
+    fillOpacity: 1,
+    strokeColor: selected ? LAMPPOST_SELECTION_STROKE : LAMPPOST_STROKE,
+    strokeWeight: selected ? 3 : 2.25,
+    scale: selected ? 1.45 : 1.2,
+    ...(anchor ? { anchor } : {}),
+  };
+};

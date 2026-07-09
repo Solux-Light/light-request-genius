@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { memo, useState } from "react";
+import { uid } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import NumericInput from "@/components/NumericInput";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2, Copy, GripVertical, Plus } from "lucide-react";
-import { RoadProfile, RoadSegment, SEGMENT_TYPES, SEGMENT_COLORS } from "@/types/solux";
+import { RoadProfile, RoadSegment, SEGMENT_TYPES, SEGMENT_COLORS, segmentTypeLabel } from "@/types/solux";
 
 interface Props {
   value: RoadProfile;
@@ -12,7 +14,7 @@ interface Props {
   lang?: "fr" | "en";
 }
 
-const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
+const RoadBuilder = memo(function RoadBuilder({ value, onChange, lang = "en" }: Props) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
 
@@ -20,7 +22,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const addSegment = () => {
     onChange([...value, {
-      id: crypto.randomUUID(),
+      id: uid(),
       type: "lane",
       width: 3.5,
       direction: "forward",
@@ -37,7 +39,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const duplicateSegment = (seg: RoadSegment) => {
     const idx = value.findIndex((s) => s.id === seg.id);
-    const copy = { ...seg, id: crypto.randomUUID() };
+    const copy = { ...seg, id: uid() };
     const next = [...value];
     next.splice(idx + 1, 0, copy);
     onChange(next);
@@ -46,7 +48,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
   const mirrorProfile = () => {
     const mirrored = [...value].reverse().map((s) => ({
       ...s,
-      id: crypto.randomUUID(),
+      id: uid(),
       direction: s.direction === "forward" ? "backward" as const : s.direction === "backward" ? "forward" as const : s.direction,
     }));
     onChange([...value, ...mirrored]);
@@ -69,10 +71,7 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
 
   const totalWidth = value.reduce((s, seg) => s + seg.width, 0);
 
-  const getLabel = (type: string) => {
-    const t = SEGMENT_TYPES.find((s) => s.value === type);
-    return t ? (lang === "fr" ? t.labelFr : t.labelEn) : type;
-  };
+  const getLabel = (type: string) => segmentTypeLabel(type, lang);
 
   return (
     <div className="space-y-6">
@@ -162,13 +161,12 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
           {/* Width */}
           <div className="w-28 space-y-1">
             <Label className="text-xs">{l("Largeur (m)", "Width (m)")}</Label>
-            <Input
-              type="number"
+            <NumericInput
               step={0.5}
               min={0.5}
               max={20}
               value={seg.width}
-              onChange={(e) => updateSegment(seg.id, { width: parseFloat(e.target.value) || 0.5 })}
+              onCommit={(n) => updateSegment(seg.id, { width: n })}
             />
           </div>
 
@@ -204,6 +202,6 @@ const RoadBuilder = ({ value, onChange, lang = "en" }: Props) => {
       )}
     </div>
   );
-};
+});
 
 export default RoadBuilder;

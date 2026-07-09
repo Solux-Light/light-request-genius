@@ -1,4 +1,6 @@
+import { memo } from "react";
 import { Input } from "@/components/ui/input";
+import { uid } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -6,7 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Trash2, Plus } from "lucide-react";
-import { PRODUCT_OPTIONS, ProductAssignment, MapArea } from "@/types/solux";
+import { PRODUCT_OPTIONS, productLabel, ProductAssignment, MapArea } from "@/types/solux";
+import HeightField from "@/components/HeightField";
 
 interface Props {
   product: string;
@@ -66,7 +69,7 @@ const ProductSelectionSection = ({
     onProductAssignmentsChange?.([
       ...productAssignments,
       {
-        id: crypto.randomUUID(),
+        id: uid(),
         zone: "",
         product: product || PRODUCT_OPTIONS[0],
         avgLux: "",
@@ -119,7 +122,7 @@ const ProductSelectionSection = ({
                 <Select value={row.product} onValueChange={(v) => updateAssignment(row.id, "product", v)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -149,8 +152,10 @@ const ProductSelectionSection = ({
                 <Input value={row.cct || ""} onChange={(e) => updateAssignment(row.id, "cct", e.target.value)} placeholder="4000" />
               </div>
               <div className="md:col-span-2 space-y-1">
-                <Label className="text-xs">{l("Scénario", "Scenario")}</Label>
-                <Textarea value={row.scenarioText || ""} onChange={(e) => updateAssignment(row.id, "scenarioText", e.target.value)} rows={2} />
+                {/* Lightweight per-zone note — the structured Lighting Program
+                    (with Morning Time) lives in the shared LightingProgramTable. */}
+                <Label className="text-xs">{l("Notes de scénario", "Scenario notes")}</Label>
+                <Textarea value={row.scenarioText || ""} onChange={(e) => updateAssignment(row.id, "scenarioText", e.target.value)} rows={2} placeholder={l("Note libre…", "Free note…")} />
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -188,86 +193,92 @@ const ProductSelectionSection = ({
     );
   }
 
+  // Compact engineering grid (U5/I1) — same density and label language as the
+  // profile configuration, instead of the old tall stacked column.
   return (
     <div className="space-y-4">
-      {/* Product selector */}
-      <div className="space-y-2">
-        <Label>{l("Produit *", "Product *")}</Label>
-        <Select value={product} onValueChange={onProductChange}>
-          <SelectTrigger><SelectValue placeholder={l("Sélectionner un produit", "Select product")} /></SelectTrigger>
-          <SelectContent>
-            {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Height & Spacing */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>{l("Hauteur luminaire (m)", "Luminaire Height (m)")}</Label>
-          <Input value={luminaireHeight} onChange={(e) => onLuminaireHeightChange(e.target.value)} placeholder="8" type="number" step="0.5" />
-          <div className="flex items-center gap-2">
-            <Checkbox checked={optimizeHeight} onCheckedChange={(v) => onOptimizeHeightChange(!!v)} />
-            <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">{l("Produit *", "Product *")}</Label>
+          <Select value={product} onValueChange={onProductChange}>
+            <SelectTrigger><SelectValue placeholder={l("Sélectionner un produit", "Select product")} /></SelectTrigger>
+            <SelectContent>
+              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">{l("Hauteur luminaire (m)", "Luminaire Height (m)")}</Label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox className="h-3.5 w-3.5" checked={optimizeHeight} onCheckedChange={(v) => onOptimizeHeightChange(!!v)} />
+              {l("Optimiser", "Optimize")}
+            </label>
+          </div>
+          {/* Fixed height ("8") or allowed range ("5-8") — transmitted as-is to
+              the Study Lab, which picks the best height inside a range. */}
+          <HeightField value={luminaireHeight} onChange={onLuminaireHeightChange} lang={lang} />
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs">{l("Espacement (m)", "Spacing (m)")}</Label>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox className="h-3.5 w-3.5" checked={optimizeSpacing} onCheckedChange={(v) => onOptimizeSpacingChange(!!v)} />
+              {l("Optimiser", "Optimize")}
+            </label>
+          </div>
+          <Input value={spacing} onChange={(e) => onSpacingChange(e.target.value)} placeholder="25" type="number" inputMode="decimal" min={0} step="1" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{l("Batterie", "Battery")}</Label>
+          <div className="flex gap-2">
+            <Select value={batteryChoice} onValueChange={(v) => onBatteryChoiceChange(v as "standard" | "custom")}>
+              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="custom">{l("Personnalisé", "Custom")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {batteryChoice === "custom" && (
+              <Input className="w-24" value={batteryWh} onChange={(e) => onBatteryWhChange(e.target.value)} placeholder="Wh" type="number" inputMode="decimal" min={0} />
+            )}
           </div>
         </div>
-        <div className="space-y-2">
-          <Label>{l("Espacement (m)", "Spacing (m)")}</Label>
-          <Input value={spacing} onChange={(e) => onSpacingChange(e.target.value)} placeholder="25" type="number" step="1" />
-          <div className="flex items-center gap-2">
-            <Checkbox checked={optimizeSpacing} onCheckedChange={(v) => onOptimizeSpacingChange(!!v)} />
-            <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
+        <div className="space-y-1">
+          <Label className="text-xs">{l("Panneau solaire", "Solar Panel")}</Label>
+          <div className="flex gap-2">
+            <Select value={panelChoice} onValueChange={(v) => onPanelChoiceChange(v as "standard" | "custom")}>
+              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="custom">{l("Personnalisé", "Custom")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {panelChoice === "custom" && (
+              <Input className="w-24" value={panelWp} onChange={(e) => onPanelWpChange(e.target.value)} placeholder="Wp" type="number" inputMode="decimal" min={0} />
+            )}
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">{l("Solutions alternatives", "Alternative Solutions")}</Label>
+          <div className="flex h-10 items-center gap-3 rounded-md border px-3">
+            <Switch checked={alternativeAccepted} onCheckedChange={onAlternativeAcceptedChange} />
+            <span className="text-sm text-muted-foreground">{l("Alternatives acceptées", "Accept alternatives")}</span>
           </div>
         </div>
       </div>
-
-      {/* Battery */}
-      <div className="space-y-2">
-        <Label>{l("Batterie", "Battery")}</Label>
-        <Select value={batteryChoice} onValueChange={(v) => onBatteryChoiceChange(v as any)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="standard">Standard</SelectItem>
-            <SelectItem value="custom">{l("Personnalisé", "Custom")}</SelectItem>
-          </SelectContent>
-        </Select>
-        {batteryChoice === "custom" && (
-          <Input value={batteryWh} onChange={(e) => onBatteryWhChange(e.target.value)} placeholder="Wh" type="number" />
-        )}
-      </div>
-
-      {/* Panel */}
-      <div className="space-y-2">
-        <Label>{l("Panneau solaire", "Solar Panel")}</Label>
-        <Select value={panelChoice} onValueChange={(v) => onPanelChoiceChange(v as any)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="standard">Standard</SelectItem>
-            <SelectItem value="custom">{l("Personnalisé", "Custom")}</SelectItem>
-          </SelectContent>
-        </Select>
-        {panelChoice === "custom" && (
-          <Input value={panelWp} onChange={(e) => onPanelWpChange(e.target.value)} placeholder="Wp" type="number" />
-        )}
-      </div>
-
-      {/* Alternative */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Switch checked={alternativeAccepted} onCheckedChange={onAlternativeAcceptedChange} />
-          <Label>{l("Alternative acceptée", "Accept Alternative Solutions")}</Label>
-        </div>
-        {alternativeAccepted && (
-          <Textarea
-            value={alternativeDetails}
-            onChange={(e) => onAlternativeDetailsChange(e.target.value)}
-            placeholder={l("Détails et suggestions d'alternative...", "Alternative details and suggestions")}
-            rows={2}
-          />
-        )}
-      </div>
+      {alternativeAccepted && (
+        <Textarea
+          value={alternativeDetails}
+          onChange={(e) => onAlternativeDetailsChange(e.target.value)}
+          placeholder={l("Détails et suggestions d'alternative...", "Alternative details and suggestions")}
+          rows={2}
+        />
+      )}
     </div>
   );
 };
 
-export default ProductSelectionSection;
+// P4 — memoized so it can skip re-renders when its (now-stable) props are
+// unchanged while the user types in unrelated fields.
+export default memo(ProductSelectionSection);

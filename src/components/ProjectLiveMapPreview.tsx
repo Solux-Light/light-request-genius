@@ -1,6 +1,7 @@
 import { GoogleMap, useJsApiLoader, PolygonF, MarkerF } from "@react-google-maps/api";
 import { MapArea, MapLamppost } from "@/types/solux";
 import { getLamppostIconOptions } from "@/lib/lamppostIcon";
+import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
 
@@ -67,7 +68,7 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, cente
         <MarkerF
           position={location}
           icon={{
-            path: google.maps.SymbolPath.CIRCLE,
+            path: MAP_SYMBOL_CIRCLE,
             fillColor: "#ffffff",
             fillOpacity: 1,
             strokeColor: "#ffffff",

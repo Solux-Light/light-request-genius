@@ -1,9 +1,10 @@
+import { memo } from "react";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LightingSetup, RoadProfile, PRODUCT_OPTIONS, SEGMENT_COLORS } from "@/types/solux";
+import { LightingSetup, RoadProfile, PRODUCT_OPTIONS, productLabel, SEGMENT_COLORS } from "@/types/solux";
 
 interface Props {
   value: LightingSetup;
@@ -19,7 +20,7 @@ const Pole = () => (
   </div>
 );
 
-const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props) => {
+const RoadLightingLayout = memo(function RoadLightingLayout({ value, onChange, roadProfile, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
   const update = <K extends keyof LightingSetup>(key: K, val: LightingSetup[K]) => {
@@ -105,26 +106,82 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
           <Select value={value.luminaire} onValueChange={(v) => update("luminaire", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Hauteur du mât", "Pole Height")}</Label>
-          <div className="flex items-center gap-3">
-            <Slider value={[value.pole_height]} onValueChange={(v) => update("pole_height", v[0])} min={4} max={14} step={0.5} className="flex-1" />
-            <Input
-              type="number"
-              value={value.pole_height}
-              onChange={(e) => update("pole_height", Math.min(14, Math.max(4, parseFloat(e.target.value) || 4)))}
-              step={0.5}
-              min={4}
-              max={14}
-              className="w-20 text-center"
-            />
-            <span className="text-sm text-muted-foreground">m</span>
+          <div className="flex items-center justify-between">
+            <Label>{l("Hauteur du mât", "Pole Height")}</Label>
+            {/* Fixed value or an allowed range — the range is a design constraint
+                for the Study Lab, nothing is optimised here. */}
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={(value.pole_height_mode ?? "fixed") === "fixed" ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => update("pole_height_mode", "fixed")}
+              >
+                {l("Fixe", "Fixed")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={value.pole_height_mode === "range" ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                onClick={() => onChange({
+                  ...value,
+                  pole_height_mode: "range",
+                  pole_height_min: value.pole_height_min ?? Math.max(4, value.pole_height - 1),
+                  pole_height_max: value.pole_height_max ?? Math.min(14, value.pole_height + 1),
+                })}
+              >
+                {l("Plage", "Range")}
+              </Button>
+            </div>
           </div>
+          {value.pole_height_mode === "range" ? (
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={value.pole_height_min ?? 4}
+                onChange={(e) => update("pole_height_min", Math.min(14, Math.max(4, parseFloat(e.target.value) || 4)))}
+                step={0.5}
+                min={4}
+                max={14}
+                className="w-24 text-center"
+              />
+              <span className="text-muted-foreground">–</span>
+              <Input
+                type="number"
+                value={value.pole_height_max ?? 14}
+                onChange={(e) => update("pole_height_max", Math.min(14, Math.max(4, parseFloat(e.target.value) || 14)))}
+                step={0.5}
+                min={4}
+                max={14}
+                className="w-24 text-center"
+              />
+              <span className="text-sm text-muted-foreground">m</span>
+              <span className="text-xs text-muted-foreground flex-1">
+                {l("Le Study Lab choisira la meilleure hauteur dans la plage.", "Study Lab will pick the best height inside the range.")}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={value.pole_height}
+                onChange={(e) => update("pole_height", Math.min(14, Math.max(4, parseFloat(e.target.value) || 4)))}
+                step={0.5}
+                min={4}
+                max={14}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">m (4–14)</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_pole_height} onCheckedChange={(v) => update("optimize_pole_height", !!v)} />
             <Label className="text-xs">{l("Optimiser", "Optimize")}</Label>
@@ -133,8 +190,7 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
 
         <div className="space-y-2">
           <Label>{l("Longueur du bras", "Arm Length")}</Label>
-          <div className="flex items-center gap-3">
-            <Slider value={[value.arm_length]} onValueChange={(v) => update("arm_length", v[0])} min={0} max={3} step={0.1} className="flex-1" />
+          <div className="flex items-center gap-2">
             <Input
               type="number"
               value={value.arm_length}
@@ -142,9 +198,9 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
               step={0.1}
               min={0}
               max={3}
-              className="w-20 text-center"
+              className="w-24"
             />
-            <span className="text-sm text-muted-foreground">m</span>
+            <span className="text-sm text-muted-foreground">m (0–3)</span>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_arm_length} onCheckedChange={(v) => update("optimize_arm_length", !!v)} />
@@ -154,8 +210,7 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
 
         <div className="space-y-2">
           <Label>{l("Inclinaison", "Tilt")}</Label>
-          <div className="flex items-center gap-3">
-            <Slider value={[value.tilt]} onValueChange={(v) => update("tilt", v[0])} min={-15} max={15} step={1} className="flex-1" />
+          <div className="flex items-center gap-2">
             <Input
               type="number"
               value={value.tilt}
@@ -163,16 +218,15 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
               step={1}
               min={-15}
               max={15}
-              className="w-20 text-center"
+              className="w-24"
             />
-            <span className="text-sm text-muted-foreground">°</span>
+            <span className="text-sm text-muted-foreground">° (−15 à +15)</span>
           </div>
         </div>
 
         <div className="space-y-2">
           <Label>{l("Espacement", "Spacing")}</Label>
-          <div className="flex items-center gap-3">
-            <Slider value={[value.spacing]} onValueChange={(v) => update("spacing", v[0])} min={10} max={50} step={1} className="flex-1" />
+          <div className="flex items-center gap-2">
             <Input
               type="number"
               value={value.spacing}
@@ -180,9 +234,9 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
               step={1}
               min={10}
               max={50}
-              className="w-20 text-center"
+              className="w-24"
             />
-            <span className="text-sm text-muted-foreground">m</span>
+            <span className="text-sm text-muted-foreground">m (10–50)</span>
           </div>
           <div className="flex items-center gap-2">
             <Checkbox checked={value.optimize_spacing} onCheckedChange={(v) => update("optimize_spacing", !!v)} />
@@ -218,6 +272,6 @@ const RoadLightingLayout = ({ value, onChange, roadProfile, lang = "en" }: Props
       </div>
     </div>
   );
-};
+});
 
 export default RoadLightingLayout;
