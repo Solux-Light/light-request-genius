@@ -31,7 +31,7 @@ const MultiProductSection = memo(function MultiProductSection({ form, onChange, 
             onCheckedChange={(v) => {
               onChange("multiProduct", v);
               if (v && form.productAssignments.length === 0) {
-                onChange("productAssignments", [{ id: uid(), zone: "", product: form.product || "SSLXPRO" }]);
+                onChange("productAssignments", [{ id: uid(), zone: "", family: form.productFamily || "", product: form.product || "" }]);
               }
             }}
           />
@@ -39,6 +39,10 @@ const MultiProductSection = memo(function MultiProductSection({ form, onChange, 
         {form.multiProduct && (
           <div className="mt-4">
             <ProductSelectionSection
+              productFamily={form.productFamily}
+              onProductFamilyChange={(v) => onChange("productFamily", v)}
+              productModelPending={form.productModelPending}
+              onProductModelPendingChange={(v) => onChange("productModelPending", v)}
               product={form.product}
               onProductChange={(v) => onChange("product", v)}
               luminaireHeight={form.luminaireHeight}

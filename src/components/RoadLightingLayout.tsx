@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LightingSetup, RoadProfile, PRODUCT_OPTIONS, productLabel, SEGMENT_COLORS } from "@/types/solux";
+import { LightingSetup, RoadProfile, PRODUCT_FAMILIES, migrateLegacyLuminaireFamily, SEGMENT_COLORS } from "@/types/solux";
 
 interface Props {
   value: LightingSetup;
@@ -102,13 +102,18 @@ const RoadLightingLayout = memo(function RoadLightingLayout({ value, onChange, r
         </div>
 
         <div className="space-y-2">
-          <Label>{l("Luminaire", "Luminaire")}</Label>
-          <Select value={value.luminaire} onValueChange={(v) => update("luminaire", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+          <Label>{l("Luminaire — famille de produit", "Luminaire — product family")}</Label>
+          {/* FAMILY level only; the exact model (e.g. SSLX Pro 60) is chosen in
+              the Product Selection section below, or left to the Study Lab. */}
+          <Select value={migrateLegacyLuminaireFamily(value.luminaire)} onValueChange={(v) => update("luminaire", v)}>
+            <SelectTrigger><SelectValue placeholder={l("Sélectionner une famille", "Select a family")} /></SelectTrigger>
             <SelectContent>
-              {PRODUCT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{productLabel(p)}</SelectItem>)}
+              {Object.keys(PRODUCT_FAMILIES).map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            {l("Le modèle exact se choisit dans « Sélection du produit » ci-dessous.", "The exact model is chosen in “Product Selection” below.")}
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -220,7 +225,7 @@ const RoadLightingLayout = memo(function RoadLightingLayout({ value, onChange, r
               max={15}
               className="w-24"
             />
-            <span className="text-sm text-muted-foreground">° (−15 à +15)</span>
+            <span className="text-sm text-muted-foreground">{l("° (−15 à +15)", "° (−15 to +15)")}</span>
           </div>
         </div>
 

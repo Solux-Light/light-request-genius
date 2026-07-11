@@ -2,8 +2,15 @@ import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
-const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+// Feedback must be reliable: several messages can coexist, and a dismissed
+// toast is purged quickly so it never blocks the slot for the next one.
+// (The Lovable scaffold shipped LIMIT=1 / REMOVE_DELAY=1000000, which made a
+// single stale toast swallow every later message — including validation errors.)
+const TOAST_LIMIT = 3;
+const TOAST_REMOVE_DELAY = 1000;
+// Auto-dismiss defaults (Radix `duration`): errors stay a little longer.
+const TOAST_DURATION_MS = 5000;
+const TOAST_DURATION_DESTRUCTIVE_MS = 8000;
 
 type ToasterToast = ToastProps & {
   id: string;
@@ -147,6 +154,9 @@ function toast({ ...props }: Toast) {
   dispatch({
     type: "ADD_TOAST",
     toast: {
+      // Default auto-dismiss so no message lingers forever; callers can still
+      // pass an explicit `duration` (e.g. Infinity for action-required toasts).
+      duration: props.variant === "destructive" ? TOAST_DURATION_DESTRUCTIVE_MS : TOAST_DURATION_MS,
       ...props,
       id,
       open: true,

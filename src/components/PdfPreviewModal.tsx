@@ -12,9 +12,10 @@ interface Props {
   nowStr: string;
   lang: "fr" | "en";
   apiKey?: string;
+  attachments?: { name: string; size: number }[];
 }
 
-const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
+const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey, attachments }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const previewRef = useRef<HTMLDivElement>(null);
   // P3 — render the document (which mounts a live Google Map) only while the
@@ -31,8 +32,9 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      {/* type="button" — prevents the form-default type="submit" */}
       <DialogTrigger asChild>
-        <Button variant="outline" size="lg">
+        <Button type="button" variant="outline" size="lg">
           <FileText className="h-4 w-4 mr-2" />
           {l("Aperçu PDF", "PDF Preview")}
         </Button>
@@ -53,6 +55,7 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey }: Props) => {
               nowStr={nowStr}
               lang={lang}
               apiKey={apiKey}
+              attachments={attachments}
             />
 
             <div className="flex justify-end pt-4">

@@ -34,13 +34,14 @@ describe("PdfSubmissionDocument", () => {
       country: "France",
       projectType: "zone",
       locationMode: "pdf", // avoid the map branch
-      product: "SSLXPRO",
+      productFamily: "SSLX Pro",
+      product: "SSLX Pro 60",
       avgLux: "20",
       cct: "4000K",
       areas: [{ id: "zone-1", type: "polygon", paths: [], color: "#2563eb", name: "Parking Nord" }],
       assignedArea: "zone-1",
       zoneLightingData: {
-        "zone-1": { ...createDefaultZoneLightingData(), avgLux: "20", cct: "4000K", product: "SSLXPRO" },
+        "zone-1": { ...createDefaultZoneLightingData(), avgLux: "20", cct: "4000K", productFamily: "SSLX Pro", product: "SSLX Pro 60" },
       },
     };
     const out = text(form);
@@ -48,8 +49,31 @@ describe("PdfSubmissionDocument", () => {
     expect(out).toContain("Test Project");
     expect(out).toContain("ACME Corp");
     expect(out).toContain("Parking Nord"); // zone name, not the raw UUID (Phase 1)
-    expect(out).toContain("SOLUX PRO"); // per-zone product (Phase 1)
+    expect(out).toContain("SSLX Pro"); // product FAMILY (two-level hierarchy)
+    expect(out).toContain("SSLX Pro 60"); // product MODEL inside the family
     expect(out).toContain("20"); // avgLux
+  });
+
+  it("migrates a legacy single-field product id and never fabricates a zone", () => {
+    // A draft saved before the family→model split stores "SSLXPRO"; the PDF
+    // must resolve it to the family with the model marked as to-be-defined.
+    const form: SoluxForm = {
+      ...defaultForm,
+      projectName: "Legacy Project",
+      clientName: "ACME Corp",
+      projectType: "zone",
+      locationMode: "pdf",
+      avgLux: "15",
+      product: "SSLXPRO",
+    };
+    const out = text(form);
+    expect(out).toContain("SSLX Pro"); // migrated family
+    expect(out).toContain("To be defined by the Study Lab"); // model pending
+    // With no zone drawn, the typed levels print as project-level targets —
+    // never as an invented "Zone" row.
+    expect(out).toContain("Project (no zone drawn)");
+    // And the document must not promise a KML that doesn't exist.
+    expect(out).not.toContain("accompanies this request");
   });
 
   it("renders road profile and lighting config for a road project", () => {

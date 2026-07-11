@@ -24,6 +24,26 @@ interface Props {
   lang?: "fr" | "en";
 }
 
+// Controllers support a bounded number of program periods; also a runaway
+// backstop so "Add period" can't build a 30-row schedule by accident.
+const MAX_PERIODS = 8;
+
+// Human sentence for a period/night mismatch — replaces the old cryptic "⚠ Fit".
+const mismatchText = (total: number, target: number, lang: "fr" | "en"): string => {
+  const t = (fr: string, en: string) => (lang === "fr" ? fr : en);
+  const diff = Math.round(Math.abs(total - target) * 100) / 100;
+  const hours = diff === 1 ? t("heure", "hour") : t("heures", "hours");
+  return total > target
+    ? t(
+        `Les périodes configurées dépassent la durée de nuit disponible de ${diff} ${hours} (${total}h pour ${target}h disponibles).`,
+        `The configured periods exceed the available night duration by ${diff} ${hours} (${total}h for ${target}h available).`,
+      )
+    : t(
+        `Les périodes configurées laissent ${diff} ${hours} de nuit sans programme (${total}h pour ${target}h disponibles).`,
+        `The configured periods leave ${diff} ${hours} of the night unprogrammed (${total}h of ${target}h available).`,
+      );
+};
+
 const LightingProgramTable = memo(function LightingProgramTable({ value, onChange, lang = "en" }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
@@ -34,6 +54,7 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
   const programTarget = Math.max(0, value.nightHours - value.morningTimeH);
   const total = value.segments.reduce((s, x) => s + (x.hours || 0), 0);
   const mismatch = Math.abs(total - programTarget) >= 0.25;
+  const atMaxPeriods = value.segments.length >= MAX_PERIODS;
 
   // Q3 — single shared implementation (lib/program) for the proportional fit.
   const rescale = () => {
@@ -41,13 +62,15 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
     patch({ segments: rescaleSegmentsToTotal(value.segments, programTarget) });
   };
 
-  const addPeriod = () =>
+  const addPeriod = () => {
+    if (atMaxPeriods) return;
     patch({
       segments: [
         ...value.segments,
         { id: uid(), mode: "fixed", hours: 1, intensity: 100 },
       ],
     });
+  };
 
   const cell = "h-8 px-2 text-sm";
 
@@ -65,7 +88,7 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs flex items-center gap-1"><Sunrise className="h-3.5 w-3.5 text-amber-600" /> Morning Time (h)</Label>
+          <Label className="text-xs flex items-center gap-1"><Sunrise className="h-3.5 w-3.5 text-amber-600" /> {l("Période du matin (h)", "Morning period (h)")}</Label>
           <NumericInput
             step="0.5" min={0} max={6}
             value={value.morningTimeH}
@@ -76,7 +99,7 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
         </div>
         {value.morningTimeH > 0 && (
           <div className="space-y-1">
-            <Label className="text-xs">{l("Intensité Morning (%)", "Morning intensity (%)")}</Label>
+            <Label className="text-xs">{l("Intensité du matin (%)", "Morning intensity (%)")}</Label>
             <NumericInput
               step="5" min={10} max={100}
               value={value.morningIntensityPct}
@@ -85,18 +108,24 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
             />
           </div>
         )}
-        <div className={`ml-auto flex items-center gap-2 text-sm ${mismatch ? "text-amber-700" : "text-muted-foreground"}`}>
+        <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
           <span>
             {l("Périodes", "Periods")}: <strong>{Math.round(total * 100) / 100}h</strong> / {programTarget}h
-            {mismatch && " ⚠"}
           </span>
-          {mismatch && (
-            <Button type="button" size="sm" variant="outline" className="h-7" onClick={rescale}>
-              <Wand2 className="h-3.5 w-3.5 mr-1" /> {l("Ajuster", "Fit")}
-            </Button>
-          )}
         </div>
       </div>
+
+      {/* Period/night mismatch — a full sentence and a clear action, never a
+          bare warning glyph. The configuration remains allowed: a technical
+          user may keep it deliberately. */}
+      {mismatch && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-400">
+          <span className="flex-1 min-w-[240px]">{mismatchText(Math.round(total * 100) / 100, programTarget, lang)}</span>
+          <Button type="button" size="sm" variant="outline" className="h-7 shrink-0" onClick={rescale}>
+            <Wand2 className="h-3.5 w-3.5 mr-1" /> {l("Ajuster les périodes à la nuit", "Adjust the periods to fit the night")}
+          </Button>
+        </div>
+      )}
 
       {/* Periods — dense engineering table */}
       <div className="rounded-lg border overflow-x-auto">
@@ -206,9 +235,21 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
       </div>
 
       <div className="flex items-center justify-between">
-        <Button type="button" size="sm" variant="outline" onClick={addPeriod}>
-          <Plus className="h-4 w-4 mr-1" /> {l("Ajouter une période", "Add period")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button" size="sm" variant="outline"
+            onClick={addPeriod}
+            disabled={atMaxPeriods}
+            title={atMaxPeriods ? l(`Maximum ${MAX_PERIODS} périodes par programme.`, `Maximum ${MAX_PERIODS} periods per program.`) : undefined}
+          >
+            <Plus className="h-4 w-4 mr-1" /> {l("Ajouter une période", "Add period")}
+          </Button>
+          {atMaxPeriods && (
+            <span className="text-xs text-muted-foreground">
+              {l(`Maximum ${MAX_PERIODS} périodes atteint.`, `Maximum of ${MAX_PERIODS} periods reached.`)}
+            </span>
+          )}
+        </div>
         {/* Thin read-only timeline preview */}
         <div className="flex h-5 flex-1 max-w-md ml-4 rounded overflow-hidden border" title={l("Aperçu du programme", "Program preview")}>
           {value.segments.map((seg) => (
@@ -224,7 +265,7 @@ const LightingProgramTable = memo(function LightingProgramTable({ value, onChang
                 width: `${(value.morningTimeH / Math.max(1, value.nightHours)) * 100}%`,
                 background: "repeating-linear-gradient(45deg, #f59e0b, #f59e0b 4px, #fbbf24 4px, #fbbf24 8px)",
               }}
-              title={`Morning Time ${value.morningTimeH}h @ ${value.morningIntensityPct}%`}
+              title={`${l("Période du matin", "Morning period")} ${value.morningTimeH}h @ ${value.morningIntensityPct}%`}
             />
           )}
         </div>

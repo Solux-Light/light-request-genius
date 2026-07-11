@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
 import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
 import ColorSwatches from "@/components/ColorSwatches";
+import ConfirmButton from "@/components/ConfirmButton";
 import { getLamppostIconOptions, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
@@ -48,6 +49,9 @@ interface Props {
   value: MapSectionValue;
   onChange: (val: MapSectionValue) => void;
   onMapViewChange?: (zoom: number, center: { lat: number; lng: number }) => void;
+  // Increment to activate the Lasso tool from outside (e.g. the "Draw a study
+  // zone" button in the levels section's empty state).
+  lassoRequestSignal?: number;
   lang?: "fr" | "en";
 }
 
@@ -60,7 +64,7 @@ const parseLatLng = (input: string) => {
   return { lat, lng };
 };
 
-const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en" }: Props) => {
+const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoRequestSignal = 0, lang = "en" }: Props) => {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
   const mapRef = useRef<google.maps.Map | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
@@ -85,6 +89,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
   // Lasso state (click-to-add mode)
   const [lassoPath, setLassoPath] = useState<{ lat: number; lng: number }[]>([]);
+
+  // External "start drawing" request (see lassoRequestSignal prop).
+  useEffect(() => {
+    if (lassoRequestSignal > 0) setActiveTool("lasso");
+  }, [lassoRequestSignal]);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
@@ -358,14 +367,30 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
         {/* Colors */}
         <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
-        {/* Tools */}
-        <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
+        {/* Tools — each carries a plain-language tooltip so a first-time user
+            knows what the tool is FOR before clicking it. */}
+        <Button
+          type="button" size="sm"
+          variant={activeTool === "lasso" ? "default" : "outline"}
+          onClick={() => setActiveTool("lasso")}
+          title={l("Dessiner le contour d'une zone d'étude sur la carte", "Draw the boundary of a study zone on the map")}
+        >
           <PenTool className="h-4 w-4 mr-1" /> {l("Lasso", "Lasso")}
         </Button>
-        <Button type="button" size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
+        <Button
+          type="button" size="sm"
+          variant={activeTool === "select" ? "default" : "outline"}
+          onClick={() => setActiveTool("select")}
+          title={l("Sélectionner et modifier une zone ou un lampadaire existant", "Select and edit an existing zone or lamp post")}
+        >
           <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
         </Button>
-        <Button type="button" size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
+        <Button
+          type="button" size="sm"
+          variant={activeTool === "lamppost" ? "default" : "outline"}
+          onClick={() => setActiveTool("lamppost")}
+          title={l("Placer les positions de lampadaires existants ou proposés", "Place the existing or proposed lamp-post positions on the map")}
+        >
           💡 {l("Lampadaire", "Lamppost")}
         </Button>
         {activeTool === "lamppost" && (
@@ -485,19 +510,32 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
 
         {/* Map type toggle */}
         <div className="absolute top-2 right-14 flex gap-1">
-          <Button type="button" size="sm" variant={mapType === "satellite" ? "default" : "secondary"} onClick={() => setMapType("satellite")}>
+          <Button type="button" size="sm" variant={mapType === "satellite" ? "default" : "secondary"} onClick={() => setMapType("satellite")} title={l("Vue satellite", "Satellite view")}>
             Satellite
           </Button>
-          <Button type="button" size="sm" variant={mapType === "hybrid" ? "default" : "secondary"} onClick={() => setMapType("hybrid")}>
-            Hybrid
+          <Button type="button" size="sm" variant={mapType === "hybrid" ? "default" : "secondary"} onClick={() => setMapType("hybrid")} title={l("Satellite avec noms de rues", "Satellite with street names")}>
+            {l("Hybride", "Hybrid")}
           </Button>
         </div>
 
-        {/* Clear all */}
+        {/* Clear all — drawn zones are slow manual work, so confirm first. */}
         {value.areas.length > 0 && (
-          <Button type="button" size="sm" variant="destructive" className="absolute bottom-2 left-2" onClick={clearAllAreas}>
-            {l("Effacer toutes les zones", "Clear all zones")}
-          </Button>
+          <div className="absolute bottom-2 left-2">
+            <ConfirmButton
+              title={l("Effacer toutes les zones ?", "Clear all zones?")}
+              description={l(
+                `${value.areas.length} zone(s) dessinée(s) et leurs niveaux d'éclairage seront supprimés. Cette action ne peut pas être annulée.`,
+                `${value.areas.length} drawn zone(s) and their lighting levels will be removed. This cannot be undone.`,
+              )}
+              confirmLabel={l("Tout effacer", "Clear all")}
+              cancelLabel={l("Annuler", "Cancel")}
+              onConfirm={clearAllAreas}
+            >
+              <Button type="button" size="sm" variant="destructive">
+                {l("Effacer toutes les zones", "Clear all zones")}
+              </Button>
+            </ConfirmButton>
+          </div>
         )}
       </div>
 
@@ -543,12 +581,23 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lang = "en
                   <div className="w-4 h-4 rounded-full" style={{ backgroundColor: area.color }} />
                   <span className="text-sm flex-1">{area.name || "Zone"}</span>
                   <span className="text-xs text-muted-foreground">{area.type}</span>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => startEditing(area)}>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => startEditing(area)} title={l("Renommer / changer la couleur", "Rename / change colour")}>
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => clearArea(area.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+                  <ConfirmButton
+                    title={l("Supprimer cette zone ?", "Delete this zone?")}
+                    description={l(
+                      `« ${area.name || "Zone"} » et ses niveaux d'éclairage seront supprimés. Cette action ne peut pas être annulée.`,
+                      `“${area.name || "Zone"}” and its lighting levels will be removed. This cannot be undone.`,
+                    )}
+                    confirmLabel={l("Supprimer", "Delete")}
+                    cancelLabel={l("Annuler", "Cancel")}
+                    onConfirm={() => clearArea(area.id)}
+                  >
+                    <Button type="button" size="sm" variant="ghost" title={l("Supprimer la zone", "Delete zone")}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </ConfirmButton>
                 </>
               )}
             </div>

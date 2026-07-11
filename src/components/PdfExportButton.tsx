@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface Props {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -10,17 +11,35 @@ interface Props {
   // document on demand — P2) and `cleanup` runs after, success or failure.
   prepare?: () => Promise<void> | void;
   cleanup?: () => void;
+  // Optional gate: return false to cancel the export (P9 — used to confirm
+  // exporting an incomplete document instead of silently producing one).
+  beforeExport?: () => Promise<boolean> | boolean;
 }
 
-const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en", prepare, cleanup }: Props) => {
+const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en", prepare, cleanup, beforeExport }: Props) => {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
+  const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
+    if (exporting) return;
+    if (beforeExport && !(await beforeExport())) return;
+    setExporting(true);
     try {
       await prepare?.();
       await runExport();
+      toast({
+        title: l("PDF créé", "PDF ready"),
+        description: l(`${filename} a été téléchargé.`, `${filename} has been downloaded.`),
+      });
+    } catch (err) {
+      toast({
+        title: l("Échec de l'export PDF", "PDF export failed"),
+        description: err instanceof Error ? err.message : l("Erreur inattendue — réessayez.", "Unexpected error — please try again."),
+        variant: "destructive",
+      });
     } finally {
       cleanup?.();
+      setExporting(false);
     }
   };
 
@@ -107,10 +126,12 @@ const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en", p
     pdf.save(filename);
   };
 
+  // type="button" — inside the intake <form>, the default type="submit" made
+  // every Export click ALSO fire a submission.
   return (
-    <Button variant="outline" size="lg" onClick={handleExport}>
-      <Download className="h-4 w-4 mr-2" />
-      {l("Exporter PDF", "Export PDF")}
+    <Button type="button" variant="outline" size="lg" onClick={handleExport} disabled={exporting}>
+      {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+      {exporting ? l("Génération du PDF…", "Generating PDF…") : l("Exporter PDF", "Export PDF")}
     </Button>
   );
 };

@@ -4,6 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { FolderOpen, Save, Trash2, Upload } from "lucide-react";
 import { SoluxForm } from "@/types/solux";
 import { listProjects, saveProject, loadProject, deleteProject, SavedProject } from "@/lib/draft";
+import ConfirmButton from "@/components/ConfirmButton";
 
 // U1 — local save/reopen. Projects live in localStorage (Supabase drafts come
 // later); files themselves can't be stored, so reopened projects show the
@@ -49,12 +50,12 @@ const ProjectsMenu = ({ form, onLoad, lang = "en" }: Props) => {
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <FolderOpen className="h-4 w-4 mr-1.5" />
-          {l("Projets", "Projects")}
+          {l("Projets locaux", "Local projects")}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-3 space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">{l("Projets enregistrés", "Saved projects")}</p>
+          <p className="text-sm font-semibold">{l("Projets enregistrés sur ce poste", "Projects saved on this device")}</p>
           <Button type="button" size="sm" variant="default" className="h-8" onClick={handleSave}>
             <Save className="h-3.5 w-3.5 mr-1" />
             {savedFlash ?? l("Enregistrer le projet actuel", "Save current project")}
@@ -62,8 +63,8 @@ const ProjectsMenu = ({ form, onLoad, lang = "en" }: Props) => {
         </div>
         <p className="text-xs text-muted-foreground">
           {l(
-            "Stockés dans ce navigateur. Les fichiers téléchargés devront être re-téléchargés à la réouverture.",
-            "Stored in this browser. Uploaded files must be re-uploaded when reopened.",
+            "Stockés dans ce navigateur uniquement : ils ne sont pas visibles depuis un autre poste et disparaissent si les données du navigateur sont effacées. Les fichiers joints devront être re-sélectionnés à la réouverture.",
+            "Stored in this browser only: they are not visible from another computer and are removed if browser data is cleared. Attached files must be selected again when reopened.",
           )}
         </p>
         {projects.length === 0 ? (
@@ -84,16 +85,27 @@ const ProjectsMenu = ({ form, onLoad, lang = "en" }: Props) => {
                   <Upload className="h-3.5 w-3.5 mr-1 rotate-180" />
                   {l("Ouvrir", "Open")}
                 </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="h-7 w-7 text-destructive hover:text-destructive"
-                  onClick={() => { deleteProject(p.id); refresh(); }}
-                  aria-label={l("Supprimer", "Delete")}
+                <ConfirmButton
+                  title={l("Supprimer ce projet ?", "Delete this project?")}
+                  description={`« ${p.name} » — ${l(
+                    "le projet enregistré sera définitivement supprimé de ce navigateur. Cette action ne peut pas être annulée.",
+                    "the saved project will be permanently removed from this browser. This cannot be undone.",
+                  )}`}
+                  confirmLabel={l("Supprimer", "Delete")}
+                  cancelLabel={l("Annuler", "Cancel")}
+                  onConfirm={() => { deleteProject(p.id); refresh(); }}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    aria-label={l("Supprimer", "Delete")}
+                    title={l("Supprimer", "Delete")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </ConfirmButton>
               </div>
             ))}
           </div>

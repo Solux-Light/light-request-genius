@@ -791,7 +791,7 @@ const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ document
               <StepHeader
                 n={5}
                 title={l("Programme d'éclairage", "Lighting Program")}
-                hint={l("Saisie directe : nuit, Morning Time, périodes, détection. Propre à CE profil.", "Direct entry: night, Morning Time, periods, detection. Specific to THIS profile.")}
+                hint={l("Saisie directe : durée de nuit, période du matin, périodes, détection. Propre à CE profil.", "Direct entry: night duration, morning period, periods, detection. Specific to THIS profile.")}
               />
               <LightingProgramTable
                 value={selected.config.program}

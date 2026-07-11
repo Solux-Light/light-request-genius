@@ -1,4 +1,4 @@
-import { SoluxForm, defaultForm, PdfZoneValue } from "@/types/solux";
+import { SoluxForm, defaultForm, PdfZoneValue, migrateLegacyProduct, migrateLegacyLuminaireFamily } from "@/types/solux";
 import { uid, deepClone } from "@/lib/utils";
 
 // Local persistence for the intake form (C1/U1).
@@ -60,6 +60,37 @@ const reviveForm = (stored: Partial<SoluxForm>): SoluxForm => {
     ...plan,
     zones: asArray(plan.zones, base.pdfPlan.zones),
     lampposts: asArray(plan.lampposts, base.pdfPlan.lampposts),
+  };
+
+  // Product hierarchy migration — drafts saved before the family→model split
+  // stored a single id ("SSLXPRO"). Resolve it into family/model so old drafts
+  // reopen cleanly in the two-level selectors.
+  if (!merged.productFamily && merged.product) {
+    const m = migrateLegacyProduct(merged.product);
+    merged.productFamily = m.family;
+    merged.product = m.product;
+    merged.productModelPending = !!m.family && !m.product;
+  }
+  Object.keys(merged.zoneLightingData).forEach((k) => {
+    const zd = merged.zoneLightingData[k];
+    if (zd && !zd.productFamily && zd.product) {
+      const m = migrateLegacyProduct(zd.product);
+      merged.zoneLightingData[k] = {
+        ...zd,
+        productFamily: m.family,
+        product: m.product,
+        productModelPending: !!m.family && !m.product,
+      };
+    }
+  });
+  merged.productAssignments = merged.productAssignments.map((a) => {
+    if (a.family || !a.product) return a;
+    const m = migrateLegacyProduct(a.product);
+    return { ...a, family: m.family, product: m.product };
+  });
+  merged.roadLighting = {
+    ...merged.roadLighting,
+    luminaire: migrateLegacyLuminaireFamily(merged.roadLighting.luminaire),
   };
   return merged;
 };

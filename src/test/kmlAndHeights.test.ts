@@ -45,7 +45,8 @@ describe("kml", () => {
   });
 
   it("builds a retypable Earth deep link", () => {
-    expect(earthWebUrl(48.8575475, 2.3513765)).toBe("https://earth.google.com/web/search/48.857548,2.351376");
+    // toFixed rounds half-up on both coordinates (48.8575475 → .857548, 2.3513765 → .351377).
+    expect(earthWebUrl(48.8575475, 2.3513765)).toBe("https://earth.google.com/web/search/48.857548,2.351377");
   });
 });
 

@@ -99,6 +99,57 @@ export const PRODUCT_FAMILIES: Record<string, string[]> = {
 export const familyForProduct = (product: string): string =>
   Object.keys(PRODUCT_FAMILIES).find((f) => PRODUCT_FAMILIES[f].includes(product)) || "";
 
+// --- Product hierarchy (final product decision) ---
+// Two levels everywhere: PRODUCT FAMILY (range) → PRODUCT MODEL (exact power
+// configuration inside the family). The model may be left to the Study Lab
+// ("model pending"). Legacy single-field ids from older drafts are migrated
+// through migrateLegacyProduct below.
+const LEGACY_PRODUCT_MAP: Record<string, { family: string; product: string }> = {
+  SSLXPRO: { family: "SSLX Pro", product: "" },
+  SSLXPERFORMANCE: { family: "SSLX Performance", product: "" },
+  AOSPRO: { family: "AOS Pro+", product: "AOS Pro+" },
+  "AOS PERFORMANCE": { family: "AOS Performance", product: "AOS Performance" },
+  COLARSUN: { family: "COLARSUN", product: "COLARSUN" },
+  "KONOS+": { family: "KONOS+", product: "KONOS+" },
+  TOTEM: { family: "TOTEM", product: "TOTEM" },
+  "TOTEM +": { family: "TOTEM", product: "TOTEM +" },
+  Relight: { family: "Relight", product: "Relight" },
+};
+
+// Resolve any stored product value (legacy id, model name, or family name) to
+// the family/model pair. Model "" with a family means "model to be defined".
+export const migrateLegacyProduct = (v: string): { family: string; product: string } => {
+  if (!v) return { family: "", product: "" };
+  if (LEGACY_PRODUCT_MAP[v]) return LEGACY_PRODUCT_MAP[v];
+  const fam = familyForProduct(v);
+  if (fam) return { family: fam, product: v };
+  if (PRODUCT_FAMILIES[v]) return { family: v, product: "" };
+  return { family: "", product: v };
+};
+
+// Same resolution for the road-layout luminaire, which stores the FAMILY level.
+export const migrateLegacyLuminaireFamily = (v: string): string => {
+  if (!v) return "";
+  if (PRODUCT_FAMILIES[v]) return v;
+  return migrateLegacyProduct(v).family || v;
+};
+
+// One printable string for family + model (+ pending), used by the PDF and
+// summaries so the two levels are always labelled unambiguously.
+export const productDisplay = (
+  family: string,
+  model: string,
+  modelPending: boolean,
+  lang: "fr" | "en",
+): { family: string; model: string } => ({
+  family: family || "—",
+  model: model
+    ? model
+    : modelPending || family
+      ? (lang === "fr" ? "À définir par le Study Lab" : "To be defined by the Study Lab")
+      : "—",
+});
+
 // EN 13201 road lighting classes (M = motorised, C = conflict, P = pedestrian).
 export const ROAD_CLASS_OPTIONS = [
   "M1", "M2", "M3", "M4", "M5", "M6",
@@ -281,6 +332,8 @@ export type LightingSetup = {
   optimize_pole_height: boolean;
   optimize_arm_length: boolean;
   optimize_spacing: boolean;
+  // PRODUCT FAMILY level (the range). The exact model is chosen in the
+  // Product Selection section (form.product) or left to the Study Lab.
   luminaire: string;
   power_mode: "auto" | "manual";
   power_w: string;
@@ -330,6 +383,7 @@ export const formatHeight = (v: string, lang: "fr" | "en" = "en"): string => {
 export type ProductAssignment = {
   id: string;
   zone: string;
+  family?: string; // product family; `product` below is the model inside it
   product: string;
   avgLux?: string;
   uniformity?: string;
@@ -400,7 +454,7 @@ export const defaultLightingSetup: LightingSetup = {
   optimize_pole_height: false,
   optimize_arm_length: false,
   optimize_spacing: false,
-  luminaire: "SSLXPRO",
+  luminaire: "SSLX Pro",
   power_mode: "auto",
   power_w: "",
   orientation: "perpendicular",
@@ -415,6 +469,8 @@ export type ZoneLightingData = {
   lightingNightHours: number;
   morningTimeH: number;
   morningIntensityPct: number;
+  productFamily: string;
+  productModelPending: boolean;
   product: string;
   luminaireHeight: string;
   spacing: string;
@@ -437,6 +493,8 @@ export const createDefaultZoneLightingData = (): ZoneLightingData => ({
   lightingNightHours: DEFAULT_LIGHTING_NIGHT_HOURS,
   morningTimeH: 0,
   morningIntensityPct: 100,
+  productFamily: "",
+  productModelPending: false,
   product: "",
   luminaireHeight: "",
   spacing: "",
@@ -467,6 +525,8 @@ export const formFieldsToZoneData = (f: ZoneLightingData): ZoneLightingData => (
   lightingNightHours: f.lightingNightHours,
   morningTimeH: f.morningTimeH,
   morningIntensityPct: f.morningIntensityPct,
+  productFamily: f.productFamily,
+  productModelPending: f.productModelPending,
   product: f.product,
   luminaireHeight: f.luminaireHeight,
   spacing: f.spacing,
@@ -503,6 +563,10 @@ export interface SoluxForm {
   minLux: string;
   uniformity: string;
   cct: string;
+  // Product hierarchy: family (range) → model. `product` holds the MODEL;
+  // `productModelPending` means "Study Lab to define the model".
+  productFamily: string;
+  productModelPending: boolean;
   product: string;
   multiProduct: boolean;
   productAssignments: ProductAssignment[];
@@ -538,6 +602,13 @@ export interface SoluxForm {
   duskHHMM: string;
   duskBasis: "legal" | "solar" | "";
   deadlineDate: string;
+  // How urgent the request is; the date above is a requested TARGET, never a
+  // confirmed delivery commitment.
+  deadlinePriority: "standard" | "urgent" | "none";
+  // Contact block for the Study Lab (no authenticated account to derive it from).
+  preparedBy: string;
+  contactEmail: string;
+  contactPhone: string;
   technicalNotes: string;
   zoneLightingData: Record<string, ZoneLightingData>;
 }
@@ -558,6 +629,8 @@ export const defaultForm: SoluxForm = {
   minLux: "",
   uniformity: "",
   cct: "4000K",
+  productFamily: "",
+  productModelPending: false,
   product: "",
   multiProduct: false,
   productAssignments: [],
@@ -594,6 +667,10 @@ export const defaultForm: SoluxForm = {
   duskHHMM: "",
   duskBasis: "",
   deadlineDate: "",
+  deadlinePriority: "standard",
+  preparedBy: "",
+  contactEmail: "",
+  contactPhone: "",
   technicalNotes: "",
   zoneLightingData: {},
 };
