@@ -87,8 +87,22 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState(COLOR_OPTIONS[0]);
 
-  // Lasso state (click-to-add mode)
+  // Lasso state (click-to-add mode).
   const [lassoPath, setLassoPath] = useState<{ lat: number; lng: number }[]>([]);
+  // A double-click reaches us as click → click → dblclick, and Maps listeners
+  // keep the callback from the PREVIOUS render — so any handler that closes
+  // the polygon must read the path through a ref, never from its closure
+  // (otherwise the dblclick sees a stale, shorter path and "does nothing").
+  const lassoPathRef = useRef(lassoPath);
+  lassoPathRef.current = lassoPath;
+  const selectedColorRef = useRef(selectedColor);
+  selectedColorRef.current = selectedColor;
+  const colorIndexRef = useRef(colorIndex);
+  colorIndexRef.current = colorIndex;
+  // Timestamp+position of the previous lasso click, to detect a double-click
+  // ourselves: the two burst clicks would otherwise add a duplicate vertex
+  // before the dblclick event ever fires.
+  const lastLassoClickRef = useRef<{ t: number; x: number; y: number } | null>(null);
 
   // External "start drawing" request (see lassoRequestSignal prop).
   useEffect(() => {
@@ -203,6 +217,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       tilt: 0,
       heading: 0,
       draggable: activeTool !== "lasso",
+      // While drawing, double-click means "close the zone" — never "zoom in".
+      disableDoubleClickZoom: activeTool === "lasso",
       draggableCursor:
         activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
     }),
@@ -227,7 +243,9 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
   );
 
   const lassoPolylineOptions = useMemo(
-    () => ({ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8 }),
+    // clickable: false — the preview line must never swallow the clicks /
+    // double-click meant for the map underneath it.
+    () => ({ strokeColor: selectedColor, strokeWeight: 2, strokeOpacity: 0.8, clickable: false }),
     [selectedColor]
   );
 
@@ -255,23 +273,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     [selectedColor]
   );
 
-  // Close the current lasso polygon
+  // Close the current lasso polygon. Reads everything through refs so it
+  // works identically no matter which (possibly stale) Maps listener calls it.
   const closeLasso = useCallback(() => {
-    if (lassoPath.length >= 3) {
-      const nextIdx = (colorIndex + 1) % COLOR_OPTIONS.length;
+    const path = lassoPathRef.current;
+    lastLassoClickRef.current = null;
+    if (path.length >= 3) {
+      const current = valueRef.current;
       const newArea: MapArea = {
         id: uid(),
         type: "polygon",
-        paths: lassoPath,
-        color: selectedColor,
-        name: `Zone ${value.areas.length + 1}`,
+        paths: path,
+        color: selectedColorRef.current,
+        name: `Zone ${current.areas.length + 1}`,
       };
-      onChange({ ...value, areas: [...value.areas, newArea] });
+      onChangeRef.current({ ...current, areas: [...current.areas, newArea] });
+      const nextIdx = (colorIndexRef.current + 1) % COLOR_OPTIONS.length;
       setSelectedColor(COLOR_OPTIONS[nextIdx]);
       setColorIndex(nextIdx);
     }
     setLassoPath([]);
-  }, [lassoPath, colorIndex, selectedColor, onChange, value]);
+  }, []);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (Date.now() < suppressMapClickUntilRef.current) {
@@ -279,6 +301,19 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     }
 
     if (activeTool === "lasso" && e.latLng) {
+      // Detect the second click of a double-click ourselves: Maps fires
+      // click, click, dblclick — without this, the burst adds a duplicate
+      // vertex and the dblclick handler runs against a stale listener.
+      const now = Date.now();
+      const dom = e.domEvent instanceof MouseEvent ? e.domEvent : null;
+      const x = dom?.clientX ?? 0;
+      const y = dom?.clientY ?? 0;
+      const last = lastLassoClickRef.current;
+      if (last && now - last.t < 400 && Math.hypot(x - last.x, y - last.y) < 12) {
+        closeLasso();
+        return;
+      }
+      lastLassoClickRef.current = { t: now, x, y };
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
       const newLamppost: MapLamppost = {
@@ -292,8 +327,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       setSelectedLamppostId(newLamppost.id);
       setActiveTool("select");
     }
-  }, [activeTool, lamppostType, onChange, value]);
+  }, [activeTool, lamppostType, onChange, value, closeLasso]);
 
+  // Backup close path — kept for the case where the two burst clicks land
+  // just outside the 12px tolerance (e.g. a fast hand on a trackpad).
   const handleMapDblClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "lasso") {
       e.stop();
@@ -449,6 +486,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
                   icon={lassoPointIcon(i)}
                   onClick={() => {
                     if (i === 0 && lassoPath.length >= 3) closeLasso();
+                  }}
+                  // A double-click on/near an existing vertex hits the MARKER,
+                  // not the map — close from here too instead of doing nothing.
+                  onDblClick={() => {
+                    if (lassoPathRef.current.length >= 3) closeLasso();
                   }}
                 />
               ))}
