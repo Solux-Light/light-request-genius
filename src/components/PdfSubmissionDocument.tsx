@@ -7,7 +7,7 @@ import {
 } from "@/types/solux";
 import { earthWebUrl } from "@/lib/kml";
 import { segmentColor } from "@/lib/program";
-import ProjectLiveMapPreview from "@/components/ProjectLiveMapPreview";
+import PdfMapView from "@/components/PdfMapView";
 
 interface Props {
   form: SoluxForm;
@@ -181,37 +181,33 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
         {form.projectType === "zone" && form.locationMode === "map" && form.location && (
           <section style={{ marginBottom: 20 }}>
             <H2>{l("Carte du projet", "Project Map")}</H2>
-            {apiKey ? (
-              <div data-map-preview>
-                <ProjectLiveMapPreview
-                  apiKey={apiKey}
-                  location={form.location}
-                  areas={form.areas}
-                  lampposts={form.lampposts}
-                  recoZones={form.mapRecoZones}
-                  zoom={form.mapZoom}
-                  center={form.mapCenter}
-                  lang={lang}
-                />
-                {(form.extraMapFrames || []).map((frame, i) => (
-                  <div key={frame.id} style={{ marginTop: 10 }}>
-                    <ProjectLiveMapPreview
-                      apiKey={apiKey}
-                      location={form.location!}
-                      areas={form.areas}
-                      lampposts={form.lampposts}
-                      recoZones={form.mapRecoZones}
-                      zoom={frame.zoom ?? form.mapZoom}
-                      center={frame.center ?? form.mapCenter}
-                      lang={lang}
-                      title={`${l("Vue supplémentaire", "Additional view")} ${i + 2}`}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: "#999", fontStyle: "italic" }}>{l("Carte non disponible", "Map not available")}</p>
-            )}
+            <div data-map-preview>
+              <PdfMapView
+                apiKey={apiKey}
+                location={form.location}
+                areas={form.areas}
+                lampposts={form.lampposts}
+                recoZones={form.mapRecoZones}
+                zoom={form.mapZoom}
+                center={form.mapCenter}
+                lang={lang}
+              />
+              {(form.extraMapFrames || []).map((frame, i) => (
+                <div key={frame.id} style={{ marginTop: 10 }}>
+                  <PdfMapView
+                    apiKey={apiKey}
+                    location={form.location!}
+                    areas={form.areas}
+                    lampposts={form.lampposts}
+                    recoZones={form.mapRecoZones}
+                    zoom={frame.zoom ?? form.mapZoom}
+                    center={frame.center ?? form.mapCenter}
+                    lang={lang}
+                    title={`${l("Vue supplémentaire", "Additional view")} ${i + 2}`}
+                  />
+                </div>
+              ))}
+            </div>
             {/* Lamppost identification legend (feedback #4) */}
             {form.lampposts.length > 0 && (
               <p style={{ fontSize: 10, marginTop: 6 }}>
