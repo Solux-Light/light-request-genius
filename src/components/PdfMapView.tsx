@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MapArea, MapLamppost, MapRecoZone, RECO_STYLE, lamppostDisplay } from "@/types/solux";
 import { buildStaticMapUrl } from "@/lib/staticMap";
 
@@ -22,20 +22,50 @@ interface Props {
 }
 
 const PdfMapView = ({ apiKey, location, center, zoom, areas, lampposts, recoZones = [], title, lang = "en" }: Props) => {
-  const [failed, setFailed] = useState(false);
   const c = center || location;
   const z = zoom || 16;
+  // We FETCH the static map and inline it as a data: URL rather than using an
+  // <img src="https://..."> — a data URL never taints the canvas, so
+  // html2canvas captures it reliably in the exported PDF. Google Static Maps
+  // sends `access-control-allow-origin: *`, so the cross-origin fetch is
+  // allowed. On any failure (API not enabled → 403, non-image response) we
+  // fall back to the SVG schematic, which is shown WHILE fetching too so the
+  // export is never blank.
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(!apiKey);
 
-  if (apiKey && !failed) {
+  const areasKey = JSON.stringify(areas.map((a) => [a.color, a.paths.length]));
+  const recoKey = JSON.stringify(recoZones.map((r) => [r.kind, r.bounds]));
+  const lampKey = lampposts.length;
+
+  useEffect(() => {
+    if (!apiKey) { setFailed(true); return; }
+    let cancelled = false;
+    setDataUrl(null);
+    setFailed(false);
     const url = buildStaticMapUrl({ apiKey, center: c, zoom: z, areas, recoZones, lampposts });
+    fetch(url)
+      .then(async (res) => {
+        const ct = res.headers.get("content-type") || "";
+        if (!res.ok || !ct.startsWith("image/")) throw new Error(`static map ${res.status}`);
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => { if (!cancelled) setDataUrl(reader.result as string); };
+        reader.onerror = () => { if (!cancelled) setFailed(true); };
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKey, c.lat, c.lng, z, areasKey, recoKey, lampKey]);
+
+  if (dataUrl) {
     return (
       <div style={{ position: "relative" }}>
         <img
-          src={url}
-          crossOrigin="anonymous"
+          src={dataUrl}
           alt={title || "Project map"}
           style={{ width: "100%", display: "block", border: "1px solid #e5e7eb", borderRadius: 4 }}
-          onError={() => setFailed(true)}
         />
         {title && (
           <span style={{ position: "absolute", top: 6, left: 6, background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 10, padding: "2px 6px", borderRadius: 3 }}>
@@ -46,6 +76,7 @@ const PdfMapView = ({ apiKey, location, center, zoom, areas, lampposts, recoZone
     );
   }
 
+  // Fetching (not yet failed) OR failed → SVG schematic (never blank).
   return <MapSchematic location={location} center={c} zoom={z} areas={areas} lampposts={lampposts} recoZones={recoZones} title={title} lang={lang} />;
 };
 
