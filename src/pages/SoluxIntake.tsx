@@ -41,6 +41,7 @@ import { saveDraft, loadDraft, clearDraft, DraftEnvelope } from "@/lib/draft";
 import { validateForm, hasZoneGeometry, Finding } from "@/lib/validation";
 import FieldMessage from "@/components/FieldMessage";
 import ConfirmButton from "@/components/ConfirmButton";
+import HelpTip from "@/components/HelpTip";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -272,8 +273,8 @@ const SoluxIntake = () => {
     location: form.location,
     areas: form.areas,
     lampposts: form.lampposts,
-    lines: form.mapLines,
-  }), [form.address, form.location, form.areas, form.lampposts, form.mapLines]);
+    recoZones: form.mapRecoZones,
+  }), [form.address, form.location, form.areas, form.lampposts, form.mapRecoZones]);
   const zoneProgram = useMemo(() => ({
     nightHours: form.lightingNightHours,
     morningTimeH: form.morningTimeH,
@@ -294,7 +295,7 @@ const SoluxIntake = () => {
       location?: { lat: number; lng: number } | null;
       areas: SoluxForm["areas"];
       lampposts: SoluxForm["lampposts"];
-      lines: SoluxForm["mapLines"];
+      recoZones: SoluxForm["mapRecoZones"];
     }) => {
       setForm((f) => ({
         ...f,
@@ -302,7 +303,7 @@ const SoluxIntake = () => {
         ...(val.location !== undefined ? { location: val.location } : {}),
         areas: val.areas,
         lampposts: val.lampposts,
-        mapLines: val.lines,
+        mapRecoZones: val.recoZones,
       }));
     },
     []
@@ -917,7 +918,7 @@ const SoluxIntake = () => {
                                 index={i}
                                 areas={form.areas}
                                 lampposts={form.lampposts}
-                                lines={form.mapLines}
+                                recoZones={form.mapRecoZones}
                                 fallbackCenter={form.mapCenter ?? form.location ?? { lat: 46.2276, lng: 2.2137 }}
                                 fallbackZoom={form.mapZoom ?? 15}
                                 onViewChange={handleFrameViewChange}
@@ -926,20 +927,21 @@ const SoluxIntake = () => {
                               />
                             </div>
                           ))}
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            onClick={handleAddMapFrame}
-                            title={l(
-                              "Ajoute une deuxième vue de carte indépendante — utile quand des zones sont éloignées les unes des autres.",
-                              "Adds a second, independent map view — useful when zones are far apart.",
-                            )}
-                          >
-                            <Plus className="h-4 w-4 mr-1.5" />
-                            {l("Ajouter un cadre de carte", "Add map frame")}
-                          </Button>
+                          <HelpTip tip={l(
+                            "Ajoute une deuxième vue de carte indépendante sous la première : déplacez-la et zoomez-la librement vers une autre partie du projet. Utilisez-la quand des zones sont éloignées de plusieurs centaines de mètres — chaque vue est exportée dans le PDF pour rester lisible.",
+                            "Adds a second, independent map view below the first: pan and zoom it freely to another part of the project. Use it when zones are hundreds of metres apart — every view is exported in the PDF so each stays readable.",
+                          )}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                              onClick={handleAddMapFrame}
+                            >
+                              <Plus className="h-4 w-4 mr-1.5" />
+                              {l("Ajouter un cadre de carte", "Add map frame")}
+                            </Button>
+                          </HelpTip>
                         </TabsContent>
                         <TabsContent value="pdf">
                           <PdfZoneEditor
@@ -1037,7 +1039,12 @@ const SoluxIntake = () => {
                           <FieldMessage error={fieldErrors.minLux} warning={fieldWarnings.minLux} />
                         </div>
                         <div className="space-y-2" id="field-cct">
-                          <Label>{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
+                          <HelpTip tip={l(
+                            "Température de couleur de la lumière demandée par le client : 2200–2700 K = lumière chaude (centres historiques, zones résidentielles), 3000 K = chaud standard, 4000 K = blanc neutre (le plus courant), 5000 K = blanc froid. Choisissez « Personnalisée » pour une valeur d'appel d'offres non listée.",
+                            "Colour temperature of the light the customer requires: 2200–2700 K = warm light (historic centres, residential areas), 3000 K = standard warm, 4000 K = neutral white (most common), 5000 K = cool white. Pick “Custom” for a tender-specific value not in the list.",
+                          )}>
+                            <Label className="cursor-help underline decoration-dotted underline-offset-4">{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
+                          </HelpTip>
                           <CctSelect value={form.cct} onChange={(v) => syncAssignedZoneData({ cct: v })} lang={lang} />
                           <FieldMessage error={fieldErrors.cct} />
                         </div>
@@ -1173,9 +1180,14 @@ const SoluxIntake = () => {
                   )}
                   <div className="mb-4 rounded-lg border bg-muted/30 p-4">
                     <div className="flex flex-wrap items-center gap-3">
-                      <Button type="button" variant="outline" onClick={handleAutoCalcNight} disabled={computingDusk}>
-                        {computingDusk ? l("Calcul…", "Calculating…") : l("🌙 Calculer depuis le lieu", "🌙 Auto-calculate from location")}
-                      </Button>
+                      <HelpTip tip={l(
+                        "Calcule automatiquement la nuit la plus longue de l'année et l'heure du coucher de soleil à partir de la localisation du projet, puis remplit la durée de nuit. C'est la référence de dimensionnement « pire cas » — utilisez-le dès que la ville ou l'adresse est renseignée.",
+                        "Automatically computes the longest night of the year and the sunset time from the project location, then fills in the night duration. This is the worst-case sizing reference — use it as soon as the city or address is filled in.",
+                      )}>
+                        <Button type="button" variant="outline" onClick={handleAutoCalcNight} disabled={computingDusk}>
+                          {computingDusk ? l("Calcul…", "Calculating…") : l("🌙 Calculer depuis le lieu", "🌙 Auto-calculate from location")}
+                        </Button>
+                      </HelpTip>
                       <p className="text-xs text-muted-foreground flex-1 min-w-[220px]">
                         {l(
                           "Estime la nuit la plus longue (solstice d'hiver) et l'heure de coucher du soleil à partir de la ville — référence de dimensionnement pire cas.",
@@ -1415,25 +1427,39 @@ const SoluxIntake = () => {
                       beforeExport={confirmExportIfIncomplete}
                     />
                     {form.projectType === "zone" && (
-                      <span title={!zoneGeometryExists ? l("Dessinez au moins une zone d'étude (ou placez un lampadaire) avant d'exporter un fichier KML.", "Draw at least one study zone (or place a lamp post) before exporting a KML file.") : undefined}>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="lg"
-                          disabled={!zoneGeometryExists || !form.location}
-                          onClick={handleKmlExport}
-                          title={zoneGeometryExists ? l("Exporter les zones et lampadaires pour Google Earth", "Export zones and lampposts for Google Earth") : undefined}
-                        >
-                          <Globe className="h-4 w-4 mr-2" />
-                          Google Earth (KML)
-                        </Button>
-                      </span>
+                      <HelpTip tip={zoneGeometryExists
+                        ? l(
+                            "Télécharge un fichier KML contenant les zones dessinées et les lampadaires placés. Le Study Lab l'ouvre dans Google Earth pour retrouver la géométrie exacte du projet sans rien redessiner.",
+                            "Downloads a KML file containing the drawn zones and placed lamp posts. The Study Lab opens it in Google Earth to recover the exact project geometry without redrawing anything.",
+                          )
+                        : l(
+                            "Le fichier KML transporte la géométrie du projet vers Google Earth. Dessinez au moins une zone d'étude (ou placez un lampadaire) sur la carte pour l'activer.",
+                            "The KML file carries the project geometry into Google Earth. Draw at least one study zone (or place a lamp post) on the map to enable it.",
+                          )}>
+                        <span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            disabled={!zoneGeometryExists || !form.location}
+                            onClick={handleKmlExport}
+                          >
+                            <Globe className="h-4 w-4 mr-2" />
+                            Google Earth (KML)
+                          </Button>
+                        </span>
+                      </HelpTip>
                     )}
                     <div className="flex-1" />
-                    <Button type="submit" size="lg" className="px-8" disabled={submitting}>
-                      <Send className="h-4 w-4 mr-2" />
-                      {submitting ? l("Envoi…", "Sending…") : l("Envoyer au bureau d'études", "Submit to Design Team")}
-                    </Button>
+                    <HelpTip tip={l(
+                      "Enregistre la demande et la transmet au bureau d'études pour réaliser l'étude d'éclairage. Vérifiez d'abord le document avec « Aperçu PDF » — les champs obligatoires manquants sont signalés en rouge.",
+                      "Saves the request and sends it to the design team to run the lighting study. Check the document with “PDF Preview” first — missing required fields are flagged in red.",
+                    )}>
+                      <Button type="submit" size="lg" className="px-8" disabled={submitting}>
+                        <Send className="h-4 w-4 mr-2" />
+                        {submitting ? l("Envoi…", "Sending…") : l("Envoyer au bureau d'études", "Submit to Design Team")}
+                      </Button>
+                    </HelpTip>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     {l("Votre demande sera enregistrée et transmise au bureau d'études.", "Your request will be saved and sent to the design team.")}

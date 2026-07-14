@@ -3,7 +3,7 @@ import {
   SoluxForm, SEGMENT_COLORS, LightingSegment,
   formatHeight, ProfileProgram, segmentTypeLabel, profileKindLabel,
   productDisplay, migrateLegacyProduct, migrateLegacyLuminaireFamily,
-  lamppostDisplay,
+  lamppostDisplay, RECO_STYLE,
 } from "@/types/solux";
 import { earthWebUrl } from "@/lib/kml";
 import { segmentColor } from "@/lib/program";
@@ -57,6 +57,29 @@ const ORIENTATION_LABELS: Record<string, { fr: string; en: string }> = {
 
 const formatFileSize = (bytes: number): string =>
   bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// Legend for recommendation zones — the Study Lab must read the intent
+// (green = install here, red = avoid) without any accompanying text.
+const RecoLegend = ({ recoCount, lang }: { recoCount: { recommended: number; excluded: number }; lang: "fr" | "en" }) => {
+  const t = (fr: string, en: string) => (lang === "fr" ? fr : en);
+  if (recoCount.recommended + recoCount.excluded === 0) return null;
+  return (
+    <p style={{ fontSize: 10, marginTop: 4 }}>
+      {recoCount.recommended > 0 && (
+        <span style={{ marginRight: 12, color: RECO_STYLE.recommended.stroke, fontWeight: 600 }}>
+          <span style={{ display: "inline-block", width: 9, height: 9, border: `2px solid ${RECO_STYLE.recommended.stroke}`, backgroundColor: `${RECO_STYLE.recommended.fill}1F`, marginRight: 3, verticalAlign: "middle" }} />
+          {RECO_STYLE.recommended.icon} {t("Zone recommandée pour l'installation", "Recommended installation area")} ({recoCount.recommended})
+        </span>
+      )}
+      {recoCount.excluded > 0 && (
+        <span style={{ color: RECO_STYLE.excluded.stroke, fontWeight: 600 }}>
+          <span style={{ display: "inline-block", width: 9, height: 9, border: `2px solid ${RECO_STYLE.excluded.stroke}`, backgroundColor: `${RECO_STYLE.excluded.fill}1F`, marginRight: 3, verticalAlign: "middle" }} />
+          {RECO_STYLE.excluded.icon} {t("Zone exclue — ne pas installer", "Excluded area — do not install")} ({recoCount.excluded})
+        </span>
+      )}
+    </p>
+  );
+};
 
 type Row = [string, string] | null;
 
@@ -165,7 +188,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                   location={form.location}
                   areas={form.areas}
                   lampposts={form.lampposts}
-                  lines={form.mapLines}
+                  recoZones={form.mapRecoZones}
                   zoom={form.mapZoom}
                   center={form.mapCenter}
                   lang={lang}
@@ -177,7 +200,7 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                       location={form.location!}
                       areas={form.areas}
                       lampposts={form.lampposts}
-                      lines={form.mapLines}
+                      recoZones={form.mapRecoZones}
                       zoom={frame.zoom ?? form.mapZoom}
                       center={frame.center ?? form.mapCenter}
                       lang={lang}
@@ -203,6 +226,10 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                 })}
               </p>
             )}
+            <RecoLegend recoCount={{
+              recommended: form.mapRecoZones.filter((z) => z.kind === "recommended").length,
+              excluded: form.mapRecoZones.filter((z) => z.kind === "excluded").length,
+            }} lang={lang} />
             {form.planNotes && (
               <div style={{ marginTop: 8, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 4, backgroundColor: "#f9fafb" }}>
                 <p style={{ fontSize: 10, fontWeight: 700, marginBottom: 2 }}>{l("Commentaires sur le plan", "Plan comments")}</p>
@@ -263,6 +290,10 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                 })}
               </p>
             )}
+            <RecoLegend recoCount={{
+              recommended: (form.pdfPlan.recoZones || []).filter((z) => z.kind === "recommended").length,
+              excluded: (form.pdfPlan.recoZones || []).filter((z) => z.kind === "excluded").length,
+            }} lang={lang} />
             {form.planNotes && (
               <div style={{ marginTop: 8, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 4, backgroundColor: "#f9fafb" }}>
                 <p style={{ fontSize: 10, fontWeight: 700, marginBottom: 2 }}>{l("Commentaires sur le plan", "Plan comments")}</p>

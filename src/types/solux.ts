@@ -21,12 +21,41 @@ export type MapLamppost = {
   label?: string;
 };
 
-// Indication line drawn on the map (Study Lab feedback #2) — e.g. red where
-// lampposts must NOT go, green where installation is fine. Open polyline.
+// DEPRECATED — the Line tool was replaced by Recommendation Zones after Study
+// Lab testing. The type is kept only so drafts saved during the short-lived
+// Line era still parse; nothing creates or renders lines any more.
 export type MapLine = {
   id: string;
   path: { lat: number; lng: number }[];
   color: string;
+};
+
+// Recommendation zone (replaces the Line tool): a rectangle the salesperson
+// draws to tell the Study Lab where lampposts SHOULD go (recommended) or must
+// NOT go (excluded). Self-explanatory on sight — green ✓ vs red ⛔.
+export type RecoKind = "recommended" | "excluded";
+
+export type MapRecoZone = {
+  id: string;
+  kind: RecoKind;
+  bounds: { north: number; south: number; east: number; west: number };
+};
+
+// Same concept on an uploaded plan — normalised (0–1) rectangle, per page.
+export type PdfRecoZone = {
+  id: string;
+  kind: RecoKind;
+  x: number; // top-left
+  y: number;
+  w: number;
+  h: number;
+  page: number;
+};
+
+// Shared styling for recommendation zones (map, plan canvas and PDF legend).
+export const RECO_STYLE: Record<RecoKind, { stroke: string; fill: string; icon: string; labelFr: string; labelEn: string }> = {
+  recommended: { stroke: "#16a34a", fill: "#16a34a", icon: "✓", labelFr: "Zone recommandée", labelEn: "Recommended area" },
+  excluded: { stroke: "#dc2626", fill: "#dc2626", icon: "⛔", labelFr: "Zone exclue", labelEn: "Excluded area" },
 };
 
 // An extra, independent viewport onto the same study map (feedback #5) —
@@ -74,8 +103,7 @@ export type PdfLamppost = {
   label?: string;
 };
 
-// Indication line drawn on an uploaded plan (feedback #2). Coordinates are
-// normalised (0–1) like zones/lampposts so they survive zoom and rotation.
+// DEPRECATED — see MapLine: kept only for old-draft compatibility.
 export type PdfLine = {
   id: string;
   points: { x: number; y: number }[];
@@ -91,7 +119,9 @@ export type PdfZoneValue = {
   mediaType?: "pdf" | "image";
   zones: PdfZone[];
   lampposts?: PdfLamppost[];
+  /** DEPRECATED — replaced by recoZones; kept for old-draft compatibility. */
   lines?: PdfLine[];
+  recoZones?: PdfRecoZone[];
   previewImage?: string;
   // Extra saved views of the same plan (feedback #5): each is a snapshot of
   // the user's framing at capture time, appended to the exported PDF so far
@@ -604,8 +634,10 @@ export interface SoluxForm {
   location: null | { lat: number; lng: number };
   areas: MapArea[];
   lampposts: MapLamppost[];
-  // Indication lines drawn on the map (feedback #2).
+  /** DEPRECATED — replaced by mapRecoZones; kept for old-draft compatibility. */
   mapLines: MapLine[];
+  // Recommendation zones drawn on the map: where lampposts should / must not go.
+  mapRecoZones: MapRecoZone[];
   // Free comment tied to the map/plan itself (feedback #3) — instructions the
   // Study Lab reads next to the drawing ("keep existing poles on this side"…).
   planNotes: string;
@@ -678,6 +710,7 @@ export const defaultForm: SoluxForm = {
   areas: [],
   lampposts: [],
   mapLines: [],
+  mapRecoZones: [],
   planNotes: "",
   extraMapFrames: [],
   mapZoom: undefined,

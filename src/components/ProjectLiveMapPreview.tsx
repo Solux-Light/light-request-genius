@@ -1,5 +1,6 @@
-import { GoogleMap, useJsApiLoader, PolygonF, PolylineF, MarkerF } from "@react-google-maps/api";
-import { MapArea, MapLamppost, MapLine, lamppostDisplay } from "@/types/solux";
+import { Fragment } from "react";
+import { GoogleMap, useJsApiLoader, PolygonF, RectangleF, MarkerF } from "@react-google-maps/api";
+import { MapArea, MapLamppost, MapRecoZone, RECO_STYLE, lamppostDisplay } from "@/types/solux";
 import { getLamppostIconOptions, getLamppostLabel } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
@@ -10,7 +11,7 @@ interface Props {
   location: { lat: number; lng: number };
   areas: MapArea[];
   lampposts: MapLamppost[];
-  lines?: MapLine[];
+  recoZones?: MapRecoZone[];
   zoom?: number;
   center?: { lat: number; lng: number };
   lang?: "fr" | "en";
@@ -18,7 +19,7 @@ interface Props {
   title?: string;
 }
 
-const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, lines = [], zoom, center, lang = "en", title }: Props) => {
+const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, recoZones = [], zoom, center, lang = "en", title }: Props) => {
   const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
@@ -58,14 +59,29 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, lines = [],
           />
         ))}
 
-        {/* Indication lines (Study Lab feedback #2) */}
-        {lines.map((line) => (
-          <PolylineF
-            key={line.id}
-            path={line.path}
-            options={{ strokeColor: line.color, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
-          />
-        ))}
+        {/* Recommendation zones — the Study Lab must see the exact same
+            indications in the PDF as in the app. */}
+        {recoZones.map((zone) => {
+          const style = RECO_STYLE[zone.kind];
+          const zCenter = {
+            lat: (zone.bounds.north + zone.bounds.south) / 2,
+            lng: (zone.bounds.east + zone.bounds.west) / 2,
+          };
+          return (
+            <Fragment key={zone.id}>
+              <RectangleF
+                bounds={zone.bounds}
+                options={{ strokeColor: style.stroke, strokeWeight: 2, fillColor: style.fill, fillOpacity: 0.12, clickable: false }}
+              />
+              <MarkerF
+                position={zCenter}
+                clickable={false}
+                icon={{ path: MAP_SYMBOL_CIRCLE, scale: 0, fillOpacity: 0 }}
+                label={{ text: style.icon, color: style.stroke, fontSize: "16px", fontWeight: "900" }}
+              />
+            </Fragment>
+          );
+        })}
 
         {/* Lampposts — identification colour + label (feedback #4) */}
         {lampposts.map((lp, i) => {

@@ -50,6 +50,7 @@ const reviveForm = (stored: Partial<SoluxForm>): SoluxForm => {
   merged.areas = asArray(stored.areas, base.areas);
   merged.lampposts = asArray(stored.lampposts, base.lampposts);
   merged.mapLines = asArray(stored.mapLines, base.mapLines);
+  merged.mapRecoZones = asArray(stored.mapRecoZones, base.mapRecoZones);
   merged.extraMapFrames = asArray(stored.extraMapFrames, base.extraMapFrames);
   merged.roadProfile = asArray(stored.roadProfile, base.roadProfile);
   merged.roadDocuments = asArray(stored.roadDocuments, base.roadDocuments);
@@ -64,7 +65,7 @@ const reviveForm = (stored: Partial<SoluxForm>): SoluxForm => {
     ...plan,
     zones: asArray(plan.zones, base.pdfPlan.zones),
     lampposts: asArray(plan.lampposts, base.pdfPlan.lampposts),
-    lines: asArray(plan.lines, []),
+    recoZones: asArray(plan.recoZones, []),
     extraFrames: asArray(plan.extraFrames, []),
   };
 

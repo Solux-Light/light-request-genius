@@ -1,8 +1,8 @@
 import { memo, useMemo, useRef, useCallback } from "react";
-import { GoogleMap, PolygonF, PolylineF, MarkerF } from "@react-google-maps/api";
+import { GoogleMap, PolygonF, RectangleF, MarkerF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
-import { MapArea, MapLamppost, MapLine, MapFrame, lamppostDisplay } from "@/types/solux";
+import { MapArea, MapLamppost, MapRecoZone, MapFrame, RECO_STYLE, lamppostDisplay } from "@/types/solux";
 import { getLamppostIconOptions, getLamppostLabel } from "@/lib/lamppostIcon";
 
 // Additional viewport onto the SAME study (Study Lab feedback #5).
@@ -15,7 +15,7 @@ interface Props {
   index: number;
   areas: MapArea[];
   lampposts: MapLamppost[];
-  lines: MapLine[];
+  recoZones: MapRecoZone[];
   fallbackCenter: { lat: number; lng: number };
   fallbackZoom: number;
   onViewChange: (id: string, center: { lat: number; lng: number }, zoom: number) => void;
@@ -26,7 +26,7 @@ interface Props {
 const FRAME_STYLE = { width: "100%", height: "420px", borderRadius: "0.5rem" } as const;
 
 const MapFrameView = memo(function MapFrameView({
-  frame, index, areas, lampposts, lines, fallbackCenter, fallbackZoom, onViewChange, onRemove, lang = "en",
+  frame, index, areas, lampposts, recoZones, fallbackCenter, fallbackZoom, onViewChange, onRemove, lang = "en",
 }: Props) {
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -87,13 +87,16 @@ const MapFrameView = memo(function MapFrameView({
               options={{ fillColor: area.color, fillOpacity: 0.3, strokeColor: area.color, strokeWeight: 2, clickable: false }}
             />
           ))}
-          {lines.map((line) => (
-            <PolylineF
-              key={line.id}
-              path={line.path}
-              options={{ strokeColor: line.color, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
-            />
-          ))}
+          {recoZones.map((zone) => {
+            const style = RECO_STYLE[zone.kind];
+            return (
+              <RectangleF
+                key={zone.id}
+                bounds={zone.bounds}
+                options={{ strokeColor: style.stroke, strokeWeight: 2, fillColor: style.fill, fillOpacity: 0.12, clickable: false }}
+              />
+            );
+          })}
           {lampposts.map((lp, i) => {
             const identity = lamppostDisplay(lp, i);
             return (

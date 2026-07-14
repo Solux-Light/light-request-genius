@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import ConfirmButton from "@/components/ConfirmButton";
 import ColorSwatches from "@/components/ColorSwatches";
 import { Input } from "@/components/ui/input";
-import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload, Spline, Camera } from "lucide-react";
-import { PdfZoneValue, PdfZone, PdfLamppost, PdfLine, COLOR_OPTIONS, PROJECT_DOCUMENT_ACCEPT, documentKindFromFile, isAnnotatableKind, lamppostDisplay } from "@/types/solux";
+import { PenTool, MousePointer, Trash2, RotateCcw, RotateCw, Plus, Minus, RotateCw as Rotate, ChevronLeft, ChevronRight, Upload, SquareCheckBig, Ban, X, Camera } from "lucide-react";
+import { PdfZoneValue, PdfZone, PdfLamppost, PdfRecoZone, RecoKind, RECO_STYLE, COLOR_OPTIONS, PROJECT_DOCUMENT_ACCEPT, documentKindFromFile, isAnnotatableKind, lamppostDisplay } from "@/types/solux";
+import HelpTip from "@/components/HelpTip";
 
 interface Props {
   value: PdfZoneValue;
@@ -33,7 +34,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
   const [uploading, setUploading] = useState(false);
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
-  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost" | "line">("select");
+  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost" | "reco">("select");
   const [lamppostType, setLamppostType] = useState<"single" | "double">("single");
   const [selectedLamppostId, setSelectedLamppostId] = useState<string | null>(null);
   const [autoFitScale, setAutoFitScale] = useState(1);
@@ -43,13 +44,29 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
 
   // Click-to-place lasso points (like Google Map)
   const [lassoPath, setLassoPath] = useState<{ x: number; y: number }[]>([]);
-  // In-progress indication line (feedback #2) — open polyline.
-  const [linePath, setLinePath] = useState<{ x: number; y: number }[]>([]);
+
+  // Recommendation-zone drawing (replaces the Line tool): first click fixes a
+  // corner, mousemove previews, second click opens the type chooser.
+  const [recoStart, setRecoStart] = useState<{ x: number; y: number } | null>(null);
+  const [recoCursor, setRecoCursor] = useState<{ x: number; y: number } | null>(null);
+  const [pendingReco, setPendingReco] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [selectedRecoId, setSelectedRecoId] = useState<string | null>(null);
 
   // Lamppost dragging (feedback #1 — plan lampposts could not be moved at all).
   const dragRef = useRef<{ id: string; moved: boolean } | null>(null);
+  // Recommendation-zone move/resize dragging (select tool).
+  const recoDragRef = useRef<{ id: string; mode: "move" | "resize"; corner: number; grabDX: number; grabDY: number; moved: boolean } | null>(null);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
+
+  // Leaving the reco tool abandons a half-drawn rectangle (a COMPLETED
+  // rectangle awaiting its type keeps its chooser open).
+  useEffect(() => {
+    if (activeTool !== "reco") {
+      setRecoStart(null);
+      setRecoCursor(null);
+    }
+  }, [activeTool]);
 
   // C4/P2 — the canvas→base64 preview capture is deferred (debounced) and merged
   // onto the LATEST value via a ref, so it (a) doesn't re-encode a multi-MB PNG on
@@ -227,38 +244,52 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
       }
     });
 
-    // Draw committed indication lines (feedback #2)
-    (value.lines || []).filter((ln) => ln.page === currentPage).forEach((ln) => {
-      if (ln.points.length < 2) return;
-      ctx.beginPath();
-      ctx.moveTo(ln.points[0].x * canvas.width, ln.points[0].y * canvas.height);
-      ln.points.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x * canvas.width, p.y * canvas.height); });
-      ctx.strokeStyle = ln.color;
-      ctx.lineWidth = 4;
-      ctx.lineCap = "round";
-      ctx.stroke();
+    // Recommendation zones (green ✓ / red ⛔) — discreet fill so the plan
+    // stays readable; selected zone gets corner handles for resizing.
+    (value.recoZones || []).filter((rz) => rz.page === currentPage).forEach((rz) => {
+      const style = RECO_STYLE[rz.kind];
+      const x = rz.x * canvas.width, y = rz.y * canvas.height;
+      const w = rz.w * canvas.width, h = rz.h * canvas.height;
+      ctx.fillStyle = style.fill + "1F"; // ≈12% alpha
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = selectedRecoId === rz.id ? 3 : 2;
+      ctx.strokeRect(x, y, w, h);
+      // Type icon at the centre
+      ctx.font = "bold 18px Inter, system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#ffffff";
+      ctx.strokeText(style.icon, x + w / 2, y + h / 2);
+      ctx.fillStyle = style.stroke;
+      ctx.fillText(style.icon, x + w / 2, y + h / 2);
+      ctx.textBaseline = "alphabetic";
+      // Resize handles when selected
+      if (selectedRecoId === rz.id) {
+        [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = style.stroke;
+          ctx.lineWidth = 2;
+          ctx.fillRect(hx - 5, hy - 5, 10, 10);
+          ctx.strokeRect(hx - 5, hy - 5, 10, 10);
+        });
+      }
     });
 
-    // Draw in-progress line
-    if (linePath.length > 0) {
-      ctx.beginPath();
-      ctx.moveTo(linePath[0].x * canvas.width, linePath[0].y * canvas.height);
-      linePath.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x * canvas.width, p.y * canvas.height); });
-      ctx.strokeStyle = selectedColor;
-      ctx.lineWidth = 4;
-      ctx.lineCap = "round";
+    // Rectangle preview while drawing / awaiting the type choice
+    const previewRect = pendingReco
+      ?? (recoStart && recoCursor
+        ? { x: Math.min(recoStart.x, recoCursor.x), y: Math.min(recoStart.y, recoCursor.y), w: Math.abs(recoCursor.x - recoStart.x), h: Math.abs(recoCursor.y - recoStart.y) }
+        : null);
+    if (previewRect) {
       ctx.setLineDash([8, 5]);
-      ctx.stroke();
+      ctx.strokeStyle = "#64748b";
+      ctx.lineWidth = 2;
+      ctx.fillStyle = "#64748b18";
+      ctx.fillRect(previewRect.x * canvas.width, previewRect.y * canvas.height, previewRect.w * canvas.width, previewRect.h * canvas.height);
+      ctx.strokeRect(previewRect.x * canvas.width, previewRect.y * canvas.height, previewRect.w * canvas.width, previewRect.h * canvas.height);
       ctx.setLineDash([]);
-      linePath.forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x * canvas.width, p.y * canvas.height, 5, 0, Math.PI * 2);
-        ctx.fillStyle = selectedColor;
-        ctx.fill();
-        ctx.strokeStyle = "#fff";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      });
     }
 
     // Draw in-progress lasso path
@@ -334,7 +365,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
 
     // Preview capture — deferred so rapid edits coalesce into one encode.
     scheduleCapture();
-  }, [baseVersion, currentPage, value.zones, value.lampposts, value.lines, selectedLamppostId, lassoPath, linePath, selectedColor, scheduleCapture]);
+  }, [baseVersion, currentPage, value.zones, value.lampposts, value.recoZones, selectedLamppostId, selectedRecoId, lassoPath, recoStart, recoCursor, pendingReco, selectedColor, scheduleCapture]);
 
   // Re-capture the framing when the user scrolls the plan (feedback #8): the
   // exported image must always match the LAST view they had on screen.
@@ -389,7 +420,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         // Explicitly replacing a loaded file ("Change file") already clears
         // everything before reaching here.
         const restoring = !value.pdfUrl &&
-          (value.zones.length > 0 || (value.lampposts || []).length > 0 || (value.lines || []).length > 0);
+          (value.zones.length > 0 || (value.lampposts || []).length > 0 || (value.recoZones || []).length > 0);
         const localUrl = URL.createObjectURL(file);
         onChange({
           ...value,
@@ -399,7 +430,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
           sourceFileName: file.name,
           zones: restoring ? value.zones : [],
           lampposts: restoring ? (value.lampposts || []) : [],
-          lines: restoring ? (value.lines || []) : [],
+          recoZones: restoring ? (value.recoZones || []) : [],
           extraFrames: [],
         });
       } else {
@@ -413,7 +444,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
           sourceFileName: file.name,
           zones: [],
           lampposts: [],
-          lines: [],
+          recoZones: [],
           extraFrames: [],
           previewImage: "",
         });
@@ -441,18 +472,44 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
     setLassoPath([]);
   }, [lassoPath, colorIndex, selectedColor, onChange, value, currentPage]);
 
-  const finishLine = useCallback(() => {
-    if (linePath.length >= 2) {
-      const newLine: PdfLine = {
-        id: uid(),
-        points: linePath,
-        color: selectedColor,
-        page: currentPage,
-      };
-      onChange({ ...value, lines: [...(value.lines || []), newLine] });
+  // Commit the pending rectangle once its meaning is chosen (chooser panel).
+  const commitReco = useCallback((kind: RecoKind) => {
+    setPendingReco((rect) => {
+      if (rect && rect.w > 0.005 && rect.h > 0.005) {
+        const newZone: PdfRecoZone = { id: uid(), kind, page: currentPage, ...rect };
+        onChange({ ...valueRef.current, recoZones: [...(valueRef.current.recoZones || []), newZone] });
+      }
+      return null;
+    });
+  }, [onChange, currentPage]);
+
+  // Recommendation zone under a normalised point (topmost drawn last wins).
+  const recoAt = useCallback((nx: number, ny: number) => {
+    const zones = (value.recoZones || []).filter((rz) => rz.page === currentPage);
+    for (let i = zones.length - 1; i >= 0; i--) {
+      const rz = zones[i];
+      if (nx >= rz.x && nx <= rz.x + rz.w && ny >= rz.y && ny <= rz.y + rz.h) return rz;
     }
-    setLinePath([]);
-  }, [linePath, selectedColor, onChange, value, currentPage]);
+    return null;
+  }, [value.recoZones, currentPage]);
+
+  // Corner-handle hit test for the SELECTED zone (screen-pixel tolerance).
+  const recoHandleAt = useCallback((nx: number, ny: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !selectedRecoId) return null;
+    const rz = (value.recoZones || []).find((z) => z.id === selectedRecoId && z.page === currentPage);
+    if (!rz) return null;
+    const rect = canvas.getBoundingClientRect();
+    const corners = [
+      [rz.x, rz.y], [rz.x + rz.w, rz.y], [rz.x, rz.y + rz.h], [rz.x + rz.w, rz.y + rz.h],
+    ];
+    for (let c = 0; c < 4; c++) {
+      const dx = (corners[c][0] - nx) * rect.width;
+      const dy = (corners[c][1] - ny) * rect.height;
+      if (Math.hypot(dx, dy) < 12) return { zone: rz, corner: c };
+    }
+    return null;
+  }, [selectedRecoId, value.recoZones, currentPage]);
 
   // Lamppost under the given canvas-normalised point, within LAMP_HIT_PX.
   const lampAt = useCallback((nx: number, ny: number) => {
@@ -478,48 +535,105 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
     if (!canvasRef.current) return;
     if (activeTool !== "select" && activeTool !== "lamppost") return;
     const { nx, ny } = canvasPoint(e);
+    // Lampposts win (small targets), then the selected zone's resize handles,
+    // then a zone body for moving.
     const lp = lampAt(nx, ny);
     if (lp) {
       // Selection itself happens on click / at drag end — pre-selecting here
       // would make the follow-up click toggle it straight back off.
       dragRef.current = { id: lp.id, moved: false };
       e.preventDefault();
+      return;
+    }
+    if (activeTool === "select") {
+      const handle = recoHandleAt(nx, ny);
+      if (handle) {
+        recoDragRef.current = { id: handle.zone.id, mode: "resize", corner: handle.corner, grabDX: 0, grabDY: 0, moved: false };
+        e.preventDefault();
+        return;
+      }
+      const rz = recoAt(nx, ny);
+      if (rz && rz.id === selectedRecoId) {
+        recoDragRef.current = { id: rz.id, mode: "move", corner: -1, grabDX: nx - rz.x, grabDY: ny - rz.y, moved: false };
+        e.preventDefault();
+      }
     }
   };
   const handleMouseMove = (e: React.MouseEvent) => {
-    const drag = dragRef.current;
-    if (!drag || !canvasRef.current) return;
+    if (!canvasRef.current) return;
     const { nx, ny } = canvasPoint(e);
-    drag.moved = true;
-    if (selectedLamppostId !== drag.id) setSelectedLamppostId(drag.id);
-    onChange({
-      ...valueRef.current,
-      lampposts: (valueRef.current.lampposts || []).map((lp) =>
-        lp.id === drag.id ? { ...lp, x: Math.min(1, Math.max(0, nx)), y: Math.min(1, Math.max(0, ny)) } : lp,
-      ),
-    });
-  };
-  const handleMouseUp = () => {
+    // Rectangle preview while drawing
+    if (activeTool === "reco" && recoStart) setRecoCursor({ x: nx, y: ny });
+
     const drag = dragRef.current;
-    if (!drag) return;
-    if (!drag.moved) {
-      dragRef.current = null; // plain click — let the click handler decide
+    if (drag) {
+      drag.moved = true;
+      if (selectedLamppostId !== drag.id) setSelectedLamppostId(drag.id);
+      onChange({
+        ...valueRef.current,
+        lampposts: (valueRef.current.lampposts || []).map((lp) =>
+          lp.id === drag.id ? { ...lp, x: Math.min(1, Math.max(0, nx)), y: Math.min(1, Math.max(0, ny)) } : lp,
+        ),
+      });
       return;
     }
-    // Keep the flag just long enough to swallow the click that ends the drag;
-    // clear it shortly after in case the release happened off-canvas and no
-    // click ever fires (otherwise the NEXT click would be swallowed).
-    setTimeout(() => { dragRef.current = null; }, 150);
+    const recoDrag = recoDragRef.current;
+    if (recoDrag) {
+      recoDrag.moved = true;
+      onChange({
+        ...valueRef.current,
+        recoZones: (valueRef.current.recoZones || []).map((rz) => {
+          if (rz.id !== recoDrag.id) return rz;
+          if (recoDrag.mode === "move") {
+            return {
+              ...rz,
+              x: Math.min(1 - rz.w, Math.max(0, nx - recoDrag.grabDX)),
+              y: Math.min(1 - rz.h, Math.max(0, ny - recoDrag.grabDY)),
+            };
+          }
+          // Resize: the dragged corner follows the mouse, its opposite stays.
+          const anchorX = recoDrag.corner % 2 === 0 ? rz.x + rz.w : rz.x;
+          const anchorY = recoDrag.corner < 2 ? rz.y + rz.h : rz.y;
+          const cx = Math.min(1, Math.max(0, nx));
+          const cy = Math.min(1, Math.max(0, ny));
+          return {
+            ...rz,
+            x: Math.min(anchorX, cx),
+            y: Math.min(anchorY, cy),
+            w: Math.abs(cx - anchorX),
+            h: Math.abs(cy - anchorY),
+          };
+        }),
+      });
+    }
+  };
+  const handleMouseUp = () => {
+    const finish = (ref: { current: { moved: boolean } | null }) => {
+      const d = ref.current;
+      if (!d) return;
+      if (!d.moved) {
+        ref.current = null; // plain click — let the click handler decide
+        return;
+      }
+      // Keep the flag just long enough to swallow the click that ends the
+      // drag; clear it shortly after in case the release happened off-canvas
+      // (otherwise the NEXT click would be swallowed).
+      setTimeout(() => { ref.current = null; }, 150);
+    };
+    finish(dragRef);
+    finish(recoDragRef);
   };
 
   const handleCanvasClick = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
-    // Swallow the click that ends a drag.
-    if (dragRef.current?.moved) {
+    // Swallow the click that ends a drag (lamppost or recommendation zone).
+    if (dragRef.current?.moved || recoDragRef.current?.moved) {
       dragRef.current = null;
+      recoDragRef.current = null;
       return;
     }
     dragRef.current = null;
+    recoDragRef.current = null;
     const { nx, ny } = canvasPoint(e);
 
     if (activeTool === "lasso") {
@@ -533,8 +647,20 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         }
       }
       setLassoPath((prev) => [...prev, { x: nx, y: ny }]);
-    } else if (activeTool === "line") {
-      setLinePath((prev) => [...prev, { x: nx, y: ny }]);
+    } else if (activeTool === "reco") {
+      if (!recoStart) {
+        setRecoStart({ x: nx, y: ny }); // first corner
+      } else {
+        // second corner → open the Recommended/Excluded chooser
+        setPendingReco({
+          x: Math.min(recoStart.x, nx),
+          y: Math.min(recoStart.y, ny),
+          w: Math.abs(nx - recoStart.x),
+          h: Math.abs(ny - recoStart.y),
+        });
+        setRecoStart(null);
+        setRecoCursor(null);
+      }
     } else if (activeTool === "lamppost") {
       const existing = lampAt(nx, ny);
       if (existing) {
@@ -557,7 +683,14 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
       }
     } else if (activeTool === "select") {
       const existing = lampAt(nx, ny);
-      setSelectedLamppostId(existing ? existing.id : null);
+      if (existing) {
+        setSelectedLamppostId(existing.id);
+        setSelectedRecoId(null);
+        return;
+      }
+      const rz = recoAt(nx, ny);
+      setSelectedRecoId(rz ? rz.id : null);
+      setSelectedLamppostId(null);
     }
   };
 
@@ -565,9 +698,6 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
     if (activeTool === "lasso") {
       e.preventDefault();
       closeLasso();
-    } else if (activeTool === "line") {
-      e.preventDefault();
-      finishLine();
     }
   };
 
@@ -631,26 +761,38 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
       <div className="flex flex-wrap items-center gap-2">
         <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
-        <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")} title={l("Dessiner le contour d'une zone d'étude", "Draw the boundary of a study zone")}>
-          <PenTool className="h-4 w-4 mr-1" /> Lasso
-        </Button>
-        <Button type="button" size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")} title={l("Sélectionner et déplacer un lampadaire", "Select and move a lamp post")}>
-          <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
-        </Button>
-        <Button
-          type="button" size="sm"
-          variant={activeTool === "line" ? "default" : "outline"}
-          onClick={() => setActiveTool("line")}
-          title={l(
-            "Tracer des lignes d'indication pour le Study Lab (ex. rouge = pas de lampadaires, vert = installation possible)",
-            "Draw indication lines for the Study Lab (e.g. red = no lampposts, green = installation allowed)",
-          )}
-        >
-          <Spline className="h-4 w-4 mr-1" /> {l("Ligne", "Line")}
-        </Button>
-        <Button type="button" size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")} title={l("Placer les positions de lampadaires", "Place lamp-post positions")}>
-          💡 {l("Lampadaire", "Lamppost")}
-        </Button>
+        <HelpTip tip={l(
+          "Dessine le contour d'une zone d'étude sur le plan : cliquez pour poser des points autour de la surface à éclairer, double-cliquez pour fermer. C'est la surface sur laquelle le Study Lab calculera l'éclairage.",
+          "Draws the boundary of a study zone on the plan: click to place points around the area to light, double-click to close. This is the surface the Study Lab will calculate lighting for.",
+        )}>
+          <Button type="button" size="sm" variant={activeTool === "lasso" ? "default" : "outline"} onClick={() => setActiveTool("lasso")}>
+            <PenTool className="h-4 w-4 mr-1" /> Lasso
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Sélectionne un élément existant pour le modifier : cliquez sur un lampadaire pour le renommer, l'orienter, le déplacer ou le supprimer ; cliquez sur une zone de recommandation pour la déplacer, la redimensionner (poignées d'angle) ou la supprimer.",
+          "Selects an existing element to edit it: click a lamp post to rename, rotate, move or delete it; click a recommendation area to move it, resize it (corner handles) or delete it.",
+        )}>
+          <Button type="button" size="sm" variant={activeTool === "select" ? "default" : "outline"} onClick={() => setActiveTool("select")}>
+            <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez deux coins d'un rectangle, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
+          "Draws a recommended or excluded area for the Study Lab: click two corners of a rectangle, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
+        )}>
+          <Button type="button" size="sm" variant={activeTool === "reco" ? "default" : "outline"} onClick={() => setActiveTool("reco")}>
+            <SquareCheckBig className="h-4 w-4 mr-1" /> {l("Zone reco.", "Reco. zone")}
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Place les lampadaires existants ou souhaités : cliquez sur le plan (y compris dans une zone) pour poser un mât. Chaque lampadaire reçoit une couleur et un numéro (L1, L2…) ; glissez-le pour le déplacer.",
+          "Places existing or proposed lamp posts: click the plan (including inside a zone) to drop a pole. Each lamp post gets a colour and a number (L1, L2…); drag it to move it.",
+        )}>
+          <Button type="button" size="sm" variant={activeTool === "lamppost" ? "default" : "outline"} onClick={() => setActiveTool("lamppost")}>
+            💡 {l("Lampadaire", "Lamppost")}
+          </Button>
+        </HelpTip>
         {activeTool === "lamppost" && (
           <div className="flex gap-1">
             <Button type="button" size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
@@ -671,14 +813,11 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
             {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
           </span>
         )}
-        {activeTool === "line" && linePath.length > 0 && (
-          <Button type="button" size="sm" variant="default" onClick={finishLine} disabled={linePath.length < 2}>
-            ✓ {l("Terminer la ligne", "Finish line")} ({linePath.length} pts)
-          </Button>
-        )}
-        {activeTool === "line" && linePath.length === 0 && (
+        {activeTool === "reco" && !pendingReco && (
           <span className="text-xs text-muted-foreground">
-            {l("Choisissez une couleur puis cliquez pour tracer — double-clic pour terminer", "Pick a colour then click to draw — double-click to finish")}
+            {recoStart
+              ? l("Cliquez le coin opposé du rectangle", "Click the opposite corner of the rectangle")
+              : l("Cliquez un premier coin du rectangle", "Click the first corner of the rectangle")}
           </span>
         )}
         <div className="w-px h-6 bg-border" />
@@ -703,11 +842,37 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
           </div>
         )}
         {!embedded && (
-          <Button type="button" size="sm" variant="outline" onClick={() => { setLassoPath([]); setLinePath([]); onChange({ ...value, pdfUrl: "", sourceKind: undefined, sourceFileName: undefined, zones: [], lampposts: [], lines: [], extraFrames: [] }); }}>
+          <Button type="button" size="sm" variant="outline" onClick={() => { setLassoPath([]); setRecoStart(null); setRecoCursor(null); setPendingReco(null); onChange({ ...value, pdfUrl: "", sourceKind: undefined, sourceFileName: undefined, zones: [], lampposts: [], recoZones: [], extraFrames: [] }); }}>
             {l("Changer le fichier", "Change file")}
           </Button>
         )}
       </div>
+
+      {/* Recommended / Excluded chooser — appears once the rectangle is drawn. */}
+      {pendingReco && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow-sm">
+          <span className="text-sm font-medium">{l("Quel type d'indication ?", "What kind of indication?")}</span>
+          <Button
+            type="button" size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
+            onClick={() => commitReco("recommended")}
+          >
+            <SquareCheckBig className="h-4 w-4 mr-1.5" />
+            {l("Zone recommandée", "Recommended area")}
+          </Button>
+          <Button
+            type="button" size="sm"
+            className="bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => commitReco("excluded")}
+          >
+            <Ban className="h-4 w-4 mr-1.5" />
+            {l("Zone exclue", "Excluded area")}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setPendingReco(null)}>
+            <X className="h-4 w-4 mr-1" /> {l("Annuler", "Cancel")}
+          </Button>
+        </div>
+      )}
 
       {/* Canvas */}
       <div ref={containerRef} className="border rounded-lg overflow-auto max-h-[760px] relative">
@@ -780,19 +945,54 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         })()}
       </div>
 
+      {/* Selected recommendation zone — kind toggle + delete + how-to hint. */}
+      {selectedRecoId && (() => {
+        const rz = (value.recoZones || []).find((z) => z.id === selectedRecoId);
+        if (!rz) return null;
+        const style = RECO_STYLE[rz.kind];
+        return (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-sm">
+            <span className="text-sm font-semibold" style={{ color: style.stroke }}>
+              {style.icon} {lang === "fr" ? style.labelFr : style.labelEn}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {l("Glissez la zone pour la déplacer, tirez les poignées d'angle pour la redimensionner.", "Drag the area to move it, pull the corner handles to resize it.")}
+            </span>
+            <Button
+              type="button" size="sm" variant="outline"
+              onClick={() => onChange({
+                ...value,
+                recoZones: (value.recoZones || []).map((z) =>
+                  z.id === rz.id ? { ...z, kind: (z.kind === "recommended" ? "excluded" : "recommended") as RecoKind } : z,
+                ),
+              })}
+            >
+              {rz.kind === "recommended" ? l("Passer en zone exclue", "Switch to excluded") : l("Passer en zone recommandée", "Switch to recommended")}
+            </Button>
+            <Button
+              type="button" size="sm" variant="destructive"
+              onClick={() => {
+                onChange({ ...value, recoZones: (value.recoZones || []).filter((z) => z.id !== rz.id) });
+                setSelectedRecoId(null);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> {l("Supprimer", "Delete")}
+            </Button>
+          </div>
+        );
+      })()}
+
       {/* Extra saved views (feedback #5) */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button" size="sm" variant="outline"
-          onClick={addPlanFrame}
-          title={l(
-            "Enregistre la vue actuelle comme cadre supplémentaire — chaque cadre est exporté dans le PDF (utile pour des zones éloignées).",
-            "Saves the current view as an extra frame — every frame is exported in the PDF (useful for far-apart areas).",
-          )}
-        >
-          <Camera className="h-4 w-4 mr-1.5" />
-          {l("Ajouter un cadre (vue actuelle)", "Add plan frame (current view)")}
-        </Button>
+        <HelpTip tip={l(
+          "Enregistre la vue actuelle du plan (zoom + cadrage) comme cadre supplémentaire. Utilisez-le quand deux parties du projet sont éloignées sur le plan : zoomez sur chacune et capturez un cadre — chaque cadre est ajouté au PDF pour rester lisible.",
+          "Saves the current plan view (zoom + framing) as an extra frame. Use it when two parts of the project are far apart on the plan: zoom to each and capture a frame — every frame is added to the PDF so each stays readable.",
+        )}>
+          <Button type="button" size="sm" variant="outline" onClick={addPlanFrame}>
+            <Camera className="h-4 w-4 mr-1.5" />
+            {l("Ajouter un cadre (vue actuelle)", "Add plan frame (current view)")}
+          </Button>
+        </HelpTip>
         {(value.extraFrames || []).map((f, i) => (
           <span key={f.id} className="inline-flex items-center gap-2 rounded border p-1">
             <img src={f.image} alt={`Frame ${i + 2}`} className="h-12 w-auto rounded" />
@@ -828,23 +1028,23 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
             </ConfirmButton>
           </div>
         )}
-        {(value.lines || []).length > 0 && (
-          <div className="flex items-center gap-2">
-            <span>{(value.lines || []).length} {l("ligne(s)", "line(s)")}</span>
-            {(value.lines || []).map((ln, i) => (
-              <span key={ln.id} className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5">
-                <span className="inline-block h-1 w-5 rounded" style={{ backgroundColor: ln.color }} />
-                <Button
-                  type="button" size="icon" variant="ghost"
-                  className="h-4 w-4 text-destructive hover:text-destructive"
-                  aria-label={`${l("Supprimer la ligne", "Delete line")} ${i + 1}`}
-                  title={`${l("Supprimer la ligne", "Delete line")} ${i + 1}`}
-                  onClick={() => onChange({ ...value, lines: (value.lines || []).filter((x) => x.id !== ln.id) })}
+        {(value.recoZones || []).length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {(value.recoZones || []).map((rz) => {
+              const style = RECO_STYLE[rz.kind];
+              return (
+                <button
+                  key={rz.id}
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-sm ${selectedRecoId === rz.id ? "ring-2 ring-foreground" : ""}`}
+                  style={{ borderColor: style.stroke, color: style.stroke }}
+                  title={l("Cliquer pour sélectionner cette zone (déplacement / redimensionnement / suppression)", "Click to select this area (move / resize / delete)")}
+                  onClick={() => { setSelectedRecoId(rz.id); setSelectedLamppostId(null); setActiveTool("select"); if (rz.page !== currentPage) setCurrentPage(rz.page); }}
                 >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </span>
-            ))}
+                  {style.icon} {lang === "fr" ? style.labelFr : style.labelEn}
+                </button>
+              );
+            })}
           </div>
         )}
         {(value.lampposts || []).length > 0 && (

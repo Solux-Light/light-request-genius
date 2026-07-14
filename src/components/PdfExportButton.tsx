@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import HelpTip from "@/components/HelpTip";
 
 interface Props {
   contentRef: React.RefObject<HTMLDivElement>;
@@ -129,10 +130,15 @@ const PdfExportButton = ({ contentRef, filename = "document.pdf", lang = "en", p
   // type="button" — inside the intake <form>, the default type="submit" made
   // every Export click ALSO fire a submission.
   return (
-    <Button type="button" variant="outline" size="lg" onClick={handleExport} disabled={exporting}>
-      {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-      {exporting ? l("Génération du PDF…", "Generating PDF…") : l("Exporter PDF", "Export PDF")}
-    </Button>
+    <HelpTip tip={l(
+      "Génère le document PDF complet de la demande (informations, carte ou plan avec zones, lampadaires et indications, niveaux, produit, programme) et le télécharge. Utilisez-le pour transmettre ou archiver la demande telle qu'elle sera lue par le Study Lab.",
+      "Generates the complete PDF document of the request (details, map or plan with zones, lamp posts and indications, levels, product, program) and downloads it. Use it to send or archive the request exactly as the Study Lab will read it.",
+    )}>
+      <Button type="button" variant="outline" size="lg" onClick={handleExport} disabled={exporting}>
+        {exporting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+        {exporting ? l("Génération du PDF…", "Generating PDF…") : l("Exporter PDF", "Export PDF")}
+      </Button>
+    </HelpTip>
   );
 };
 

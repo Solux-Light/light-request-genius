@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FileText } from "lucide-react";
+import HelpTip from "@/components/HelpTip";
 import PdfSubmissionDocument from "./PdfSubmissionDocument";
 import PdfExportButton from "./PdfExportButton";
 import { SoluxForm } from "@/types/solux";
@@ -33,12 +34,17 @@ const PdfPreviewModal = ({ form, salesName, nowStr, lang, apiKey, attachments }:
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {/* type="button" — prevents the form-default type="submit" */}
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="lg">
-          <FileText className="h-4 w-4 mr-2" />
-          {l("Aperçu PDF", "PDF Preview")}
-        </Button>
-      </DialogTrigger>
+      <HelpTip tip={l(
+        "Affiche le document PDF tel qu'il sera généré, sans le télécharger. Utilisez-le pour vérifier que la carte, les niveaux et le produit sont corrects avant d'exporter ou d'envoyer la demande.",
+        "Shows the PDF document exactly as it will be generated, without downloading it. Use it to check that the map, levels and product are correct before exporting or submitting the request.",
+      )}>
+        <DialogTrigger asChild>
+          <Button type="button" variant="outline" size="lg">
+            <FileText className="h-4 w-4 mr-2" />
+            {l("Aperçu PDF", "PDF Preview")}
+          </Button>
+        </DialogTrigger>
+      </HelpTip>
       <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{l("Aperçu du document", "Submission Document Preview")}</DialogTitle>

@@ -1,12 +1,13 @@
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo, Fragment } from "react";
 import { uid } from "@/lib/utils";
-import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF, RectangleF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool, Spline } from "lucide-react";
-import { MapArea, MapLamppost, MapLine, COLOR_OPTIONS, lamppostDisplay } from "@/types/solux";
+import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool, SquareCheckBig, Ban, X } from "lucide-react";
+import { MapArea, MapLamppost, MapRecoZone, RecoKind, RECO_STYLE, COLOR_OPTIONS, lamppostDisplay } from "@/types/solux";
 import ColorSwatches from "@/components/ColorSwatches";
 import ConfirmButton from "@/components/ConfirmButton";
+import HelpTip from "@/components/HelpTip";
 import { Label } from "@/components/ui/label";
 import { getLamppostIconOptions, getLamppostLabel, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
@@ -43,7 +44,7 @@ export interface MapSectionValue {
   location?: { lat: number; lng: number } | null;
   areas: MapArea[];
   lampposts: MapLamppost[];
-  lines: MapLine[];
+  recoZones: MapRecoZone[];
 }
 
 interface Props {
@@ -82,18 +83,22 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
   const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
-  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost" | "line">("select");
+  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost" | "reco">("select");
   const [lamppostType, setLamppostType] = useState<"single" | "double">("single");
   const [selectedLamppostId, setSelectedLamppostId] = useState<string | null>(null);
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState(COLOR_OPTIONS[0]);
 
-  // In-progress indication line (feedback #2) — same click-to-add mechanics
-  // as the lasso, but an OPEN polyline committed on double-click / Finish.
-  const [linePath, setLinePath] = useState<{ lat: number; lng: number }[]>([]);
-  const linePathRef = useRef(linePath);
-  linePathRef.current = linePath;
+  // Recommendation-zone drawing (replaces the Line tool): first click fixes a
+  // corner, the mouse previews the rectangle, the second click opens the
+  // Recommended/Excluded chooser.
+  const [recoStart, setRecoStart] = useState<{ lat: number; lng: number } | null>(null);
+  const [recoCursor, setRecoCursor] = useState<{ lat: number; lng: number } | null>(null);
+  const [pendingReco, setPendingReco] = useState<MapRecoZone["bounds"] | null>(null);
+  const [selectedRecoId, setSelectedRecoId] = useState<string | null>(null);
+  // Live Rectangle instances, to read user-edited bounds back on commit.
+  const recoRectsRef = useRef<Record<string, google.maps.Rectangle>>({});
 
   // Lasso state (click-to-add mode).
   const [lassoPath, setLassoPath] = useState<{ lat: number; lng: number }[]>([]);
@@ -116,6 +121,15 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
   useEffect(() => {
     if (lassoRequestSignal > 0) setActiveTool("lasso");
   }, [lassoRequestSignal]);
+
+  // Leaving the reco tool abandons a half-drawn rectangle (the chooser for a
+  // COMPLETED rectangle stays open — switching tools must not lose it).
+  useEffect(() => {
+    if (activeTool !== "reco") {
+      setRecoStart(null);
+      setRecoCursor(null);
+    }
+  }, [activeTool]);
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
@@ -224,9 +238,9 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       gestureHandling: "greedy" as const,
       tilt: 0,
       heading: 0,
-      draggable: activeTool !== "lasso" && activeTool !== "line",
+      draggable: activeTool !== "lasso",
       // While drawing, double-click means "finish the shape" — never "zoom in".
-      disableDoubleClickZoom: activeTool === "lasso" || activeTool === "line",
+      disableDoubleClickZoom: activeTool === "lasso" || activeTool === "reco",
       draggableCursor:
         activeTool === "select" ? "grab" : "crosshair",
     }),
@@ -306,17 +320,48 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     setLassoPath([]);
   }, []);
 
-  // Finish the current indication line (open polyline, ≥2 points). Same
-  // ref-based reading as closeLasso so stale Maps listeners can't break it.
-  const finishLine = useCallback(() => {
-    const path = linePathRef.current;
-    lastLassoClickRef.current = null;
-    if (path.length >= 2) {
-      const current = valueRef.current;
-      const newLine: MapLine = { id: uid(), path, color: selectedColorRef.current };
-      onChangeRef.current({ ...current, lines: [...(current.lines || []), newLine] });
-    }
-    setLinePath([]);
+  // Two corners → normalised rectangle bounds.
+  const cornersToBounds = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => ({
+    north: Math.max(a.lat, b.lat),
+    south: Math.min(a.lat, b.lat),
+    east: Math.max(a.lng, b.lng),
+    west: Math.min(a.lng, b.lng),
+  });
+
+  // Commit the pending rectangle once the salesperson picks its meaning.
+  const commitReco = useCallback((kind: RecoKind) => {
+    setPendingReco((bounds) => {
+      if (bounds) {
+        const current = valueRef.current;
+        onChangeRef.current({
+          ...current,
+          recoZones: [...(current.recoZones || []), { id: uid(), kind, bounds }],
+        });
+      }
+      return null;
+    });
+  }, []);
+
+  // Read back the live rectangle after a move/resize and persist it.
+  const commitRecoBounds = useCallback((id: string) => {
+    const rect = recoRectsRef.current[id];
+    const b = rect?.getBounds();
+    if (!b) return;
+    const ne = b.getNorthEast();
+    const sw = b.getSouthWest();
+    const next = { north: ne.lat(), south: sw.lat(), east: ne.lng(), west: sw.lng() };
+    const current = valueRef.current;
+    const existing = (current.recoZones || []).find((z) => z.id === id);
+    if (!existing) return;
+    const same = Math.abs(existing.bounds.north - next.north) < 1e-9 &&
+      Math.abs(existing.bounds.south - next.south) < 1e-9 &&
+      Math.abs(existing.bounds.east - next.east) < 1e-9 &&
+      Math.abs(existing.bounds.west - next.west) < 1e-9;
+    if (same) return;
+    onChangeRef.current({
+      ...current,
+      recoZones: (current.recoZones || []).map((z) => (z.id === id ? { ...z, bounds: next } : z)),
+    });
   }, []);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
@@ -339,19 +384,15 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       }
       lastLassoClickRef.current = { t: now, x, y };
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
-    } else if (activeTool === "line" && e.latLng) {
-      // Same burst-double-click detection as the lasso.
-      const now = Date.now();
-      const dom = e.domEvent instanceof MouseEvent ? e.domEvent : null;
-      const x = dom?.clientX ?? 0;
-      const y = dom?.clientY ?? 0;
-      const last = lastLassoClickRef.current;
-      if (last && now - last.t < 400 && Math.hypot(x - last.x, y - last.y) < 12) {
-        finishLine();
-        return;
-      }
-      lastLassoClickRef.current = { t: now, x, y };
-      setLinePath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
+    } else if (activeTool === "reco" && e.latLng) {
+      const pt = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      setRecoStart((start) => {
+        if (!start) return pt; // first corner
+        // second corner → open the Recommended/Excluded chooser
+        setPendingReco(cornersToBounds(start, pt));
+        setRecoCursor(null);
+        return null;
+      });
     } else if (activeTool === "lamppost" && e.latLng) {
       const count = (value.lampposts || []).length;
       const identity = lamppostDisplay({}, count);
@@ -370,7 +411,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       // Stay in lamppost mode so several poles can be placed in a row —
       // including directly inside zones (feedback #1).
     }
-  }, [activeTool, lamppostType, onChange, value, closeLasso, finishLine]);
+  }, [activeTool, lamppostType, onChange, value, closeLasso]);
 
   // Backup close path — kept for the case where the two burst clicks land
   // just outside the 12px tolerance (e.g. a fast hand on a trackpad).
@@ -378,11 +419,15 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     if (activeTool === "lasso") {
       e.stop();
       closeLasso();
-    } else if (activeTool === "line") {
-      e.stop();
-      finishLine();
     }
-  }, [activeTool, closeLasso, finishLine]);
+  }, [activeTool, closeLasso]);
+
+  // Live rectangle preview between the first and second corner clicks.
+  const handleMapMouseMove = useCallback((e: google.maps.MapMouseEvent) => {
+    if (activeTool === "reco" && recoStart && e.latLng) {
+      setRecoCursor({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+    }
+  }, [activeTool, recoStart]);
 
   const clearArea = (id: string) => {
     onChange({ ...value, areas: value.areas.filter((a) => a.id !== id) });
@@ -450,43 +495,56 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
         {/* Colors */}
         <ColorSwatches value={selectedColor} onChange={setSelectedColor} />
         <div className="w-px h-6 bg-border" />
-        {/* Tools — each carries a plain-language tooltip so a first-time user
-            knows what the tool is FOR before clicking it. */}
-        <Button
-          type="button" size="sm"
-          variant={activeTool === "lasso" ? "default" : "outline"}
-          onClick={() => setActiveTool("lasso")}
-          title={l("Dessiner le contour d'une zone d'étude sur la carte", "Draw the boundary of a study zone on the map")}
-        >
-          <PenTool className="h-4 w-4 mr-1" /> {l("Lasso", "Lasso")}
-        </Button>
-        <Button
-          type="button" size="sm"
-          variant={activeTool === "select" ? "default" : "outline"}
-          onClick={() => setActiveTool("select")}
-          title={l("Sélectionner et modifier une zone ou un lampadaire existant", "Select and edit an existing zone or lamp post")}
-        >
-          <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
-        </Button>
-        <Button
-          type="button" size="sm"
-          variant={activeTool === "line" ? "default" : "outline"}
-          onClick={() => setActiveTool("line")}
-          title={l(
-            "Tracer des lignes d'indication pour le Study Lab (ex. rouge = pas de lampadaires, vert = installation possible)",
-            "Draw indication lines for the Study Lab (e.g. red = no lampposts, green = installation allowed)",
-          )}
-        >
-          <Spline className="h-4 w-4 mr-1" /> {l("Ligne", "Line")}
-        </Button>
-        <Button
-          type="button" size="sm"
-          variant={activeTool === "lamppost" ? "default" : "outline"}
-          onClick={() => setActiveTool("lamppost")}
-          title={l("Placer les positions de lampadaires existants ou proposés", "Place the existing or proposed lamp-post positions on the map")}
-        >
-          💡 {l("Lampadaire", "Lamppost")}
-        </Button>
+        {/* Tools — each explains what it does, why it exists and when to use
+            it, readable just by hovering (Study Lab feedback). */}
+        <HelpTip tip={l(
+          "Dessine le contour d'une zone d'étude : cliquez pour poser des points autour de la surface à éclairer, double-cliquez pour fermer. C'est la surface sur laquelle le Study Lab calculera l'éclairage — commencez par ceci.",
+          "Draws the boundary of a study zone: click to place points around the area to light, double-click to close. This is the surface the Study Lab will calculate lighting for — start here.",
+        )}>
+          <Button
+            type="button" size="sm"
+            variant={activeTool === "lasso" ? "default" : "outline"}
+            onClick={() => setActiveTool("lasso")}
+          >
+            <PenTool className="h-4 w-4 mr-1" /> {l("Lasso", "Lasso")}
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Sélectionne un élément existant pour le modifier : cliquez sur une zone pour la renommer ou changer sa couleur, sur un lampadaire pour le renommer, l'orienter ou le supprimer, sur une zone de recommandation pour la déplacer ou la redimensionner.",
+          "Selects an existing element to edit it: click a zone to rename or recolour it, a lamp post to rename, rotate or delete it, a recommendation area to move or resize it.",
+        )}>
+          <Button
+            type="button" size="sm"
+            variant={activeTool === "select" ? "default" : "outline"}
+            onClick={() => setActiveTool("select")}
+          >
+            <MousePointer className="h-4 w-4 mr-1" /> {l("Sélection", "Select")}
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez deux coins d'un rectangle, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
+          "Draws a recommended or excluded area for the Study Lab: click two corners of a rectangle, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
+        )}>
+          <Button
+            type="button" size="sm"
+            variant={activeTool === "reco" ? "default" : "outline"}
+            onClick={() => setActiveTool("reco")}
+          >
+            <SquareCheckBig className="h-4 w-4 mr-1" /> {l("Zone reco.", "Reco. zone")}
+          </Button>
+        </HelpTip>
+        <HelpTip tip={l(
+          "Place les lampadaires existants ou souhaités : cliquez sur la carte (y compris dans une zone) pour poser un mât. Chaque lampadaire reçoit une couleur et un numéro (L1, L2…) pour en parler facilement avec le Study Lab. Glissez-le pour le déplacer.",
+          "Places existing or proposed lamp posts: click the map (including inside a zone) to drop a pole. Each lamp post gets a colour and a number (L1, L2…) so you can discuss a precise pole with the Study Lab. Drag it to move it.",
+        )}>
+          <Button
+            type="button" size="sm"
+            variant={activeTool === "lamppost" ? "default" : "outline"}
+            onClick={() => setActiveTool("lamppost")}
+          >
+            💡 {l("Lampadaire", "Lamppost")}
+          </Button>
+        </HelpTip>
         {activeTool === "lamppost" && (
           <div className="flex gap-1">
             <Button type="button" size="sm" variant={lamppostType === "single" ? "default" : "outline"} onClick={() => setLamppostType("single")}>
@@ -507,17 +565,40 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
           </span>
         )}
-        {activeTool === "line" && linePath.length > 0 && (
-          <Button type="button" size="sm" variant="default" onClick={finishLine} disabled={linePath.length < 2}>
-            ✓ {l("Terminer la ligne", "Finish line")} ({linePath.length} pts)
-          </Button>
-        )}
-        {activeTool === "line" && linePath.length === 0 && (
+        {activeTool === "reco" && !pendingReco && (
           <span className="text-xs text-muted-foreground">
-            {l("Choisissez une couleur puis cliquez pour tracer — double-clic pour terminer (ex. rouge = pas de lampadaires, vert = autorisé)", "Pick a colour then click to draw — double-click to finish (e.g. red = no lampposts, green = allowed)")}
+            {recoStart
+              ? l("Cliquez le coin opposé du rectangle", "Click the opposite corner of the rectangle")
+              : l("Cliquez un premier coin du rectangle", "Click the first corner of the rectangle")}
           </span>
         )}
       </div>
+
+      {/* Recommended / Excluded chooser — appears once the rectangle is drawn. */}
+      {pendingReco && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 shadow-sm">
+          <span className="text-sm font-medium">{l("Quel type d'indication ?", "What kind of indication?")}</span>
+          <Button
+            type="button" size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
+            onClick={() => commitReco("recommended")}
+          >
+            <SquareCheckBig className="h-4 w-4 mr-1.5" />
+            {l("Zone recommandée", "Recommended area")}
+          </Button>
+          <Button
+            type="button" size="sm"
+            className="bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => commitReco("excluded")}
+          >
+            <Ban className="h-4 w-4 mr-1.5" />
+            {l("Zone exclue", "Excluded area")}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setPendingReco(null)}>
+            <X className="h-4 w-4 mr-1" /> {l("Annuler", "Cancel")}
+          </Button>
+        </div>
+      )}
 
       {/* Map */}
       <div className="relative rounded-lg border border-border">
@@ -527,6 +608,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
           onIdle={onMapIdle}
           onClick={handleMapClick}
           onDblClick={handleMapDblClick}
+          onMouseMove={handleMapMouseMove}
           options={mapOptions}
         >
           {/* Polygons */}
@@ -539,26 +621,57 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             />
           ))}
 
-          {/* Committed indication lines (feedback #2) */}
-          {(value.lines || []).map((line) => (
-            <PolylineF
-              key={line.id}
-              path={line.path}
-              options={{ strokeColor: line.color, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
-            />
-          ))}
+          {/* Recommendation zones — green ✓ / red ⛔ rectangles the Study Lab
+              reads at a glance. Selected → draggable + resizable natively. */}
+          {(value.recoZones || []).map((zone) => {
+            const style = RECO_STYLE[zone.kind];
+            const isSelected = selectedRecoId === zone.id;
+            const center = {
+              lat: (zone.bounds.north + zone.bounds.south) / 2,
+              lng: (zone.bounds.east + zone.bounds.west) / 2,
+            };
+            return (
+              <Fragment key={zone.id}>
+                <RectangleF
+                  bounds={zone.bounds}
+                  options={{
+                    strokeColor: style.stroke,
+                    strokeWeight: isSelected ? 3 : 2,
+                    fillColor: style.fill,
+                    fillOpacity: 0.12,
+                    clickable: activeTool === "select",
+                    editable: isSelected,
+                    draggable: isSelected,
+                    zIndex: 5,
+                  }}
+                  onLoad={(rect) => { recoRectsRef.current[zone.id] = rect; }}
+                  onUnmount={() => { delete recoRectsRef.current[zone.id]; }}
+                  onClick={() => setSelectedRecoId(isSelected ? null : zone.id)}
+                  onMouseUp={() => { if (isSelected) commitRecoBounds(zone.id); }}
+                  onDragEnd={() => commitRecoBounds(zone.id)}
+                />
+                <MarkerF
+                  position={center}
+                  clickable={false}
+                  icon={{ path: MAP_SYMBOL_CIRCLE, scale: 0, fillOpacity: 0 }}
+                  label={{ text: style.icon, color: style.stroke, fontSize: "16px", fontWeight: "900" }}
+                />
+              </Fragment>
+            );
+          })}
 
-          {/* In-progress indication line */}
-          {linePath.length > 0 && (
-            <>
-              <PolylineF
-                path={linePath}
-                options={{ strokeColor: selectedColor, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
-              />
-              {linePath.map((pt, i) => (
-                <MarkerF key={`line-pt-${i}`} position={pt} icon={lassoPointIcon(i === 0 ? 1 : i)} clickable={false} />
-              ))}
-            </>
+          {/* Rectangle preview while placing the second corner */}
+          {recoStart && recoCursor && (
+            <RectangleF
+              bounds={cornersToBounds(recoStart, recoCursor)}
+              options={{ strokeColor: "#64748b", strokeWeight: 2, fillColor: "#64748b", fillOpacity: 0.08, clickable: false }}
+            />
+          )}
+          {pendingReco && (
+            <RectangleF
+              bounds={pendingReco}
+              options={{ strokeColor: "#64748b", strokeWeight: 2, fillColor: "#64748b", fillOpacity: 0.12, clickable: false }}
+            />
           )}
 
           {/* Lasso path */}
@@ -758,26 +871,71 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
         </div>
       )}
 
-      {/* Indication lines (feedback #2) */}
-      {(value.lines || []).length > 0 && (
+      {/* Selected recommendation zone — kind toggle + delete + how-to hint. */}
+      {selectedRecoId && (() => {
+        const zone = (value.recoZones || []).find((z) => z.id === selectedRecoId);
+        if (!zone) return null;
+        const style = RECO_STYLE[zone.kind];
+        return (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-sm">
+            <span className="text-sm font-semibold" style={{ color: style.stroke }}>
+              {style.icon} {lang === "fr" ? style.labelFr : style.labelEn}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {l("Glissez la zone pour la déplacer, tirez les poignées pour la redimensionner.", "Drag the area to move it, pull the handles to resize it.")}
+            </span>
+            <Button
+              type="button" size="sm" variant="outline"
+              onClick={() => onChange({
+                ...value,
+                recoZones: (value.recoZones || []).map((z) =>
+                  z.id === zone.id ? { ...z, kind: (z.kind === "recommended" ? "excluded" : "recommended") as RecoKind } : z,
+                ),
+              })}
+            >
+              {zone.kind === "recommended"
+                ? <>{l("Passer en zone exclue", "Switch to excluded")}</>
+                : <>{l("Passer en zone recommandée", "Switch to recommended")}</>}
+            </Button>
+            <Button
+              type="button" size="sm" variant="destructive"
+              onClick={() => {
+                onChange({ ...value, recoZones: (value.recoZones || []).filter((z) => z.id !== zone.id) });
+                setSelectedRecoId(null);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-1" /> {l("Supprimer", "Delete")}
+            </Button>
+          </div>
+        );
+      })()}
+
+      {/* Recommendation zones list */}
+      {(value.recoZones || []).length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium">{l("Lignes d'indication", "Indication lines")} ({(value.lines || []).length})</h3>
+          <h3 className="text-sm font-medium">{l("Zones de recommandation", "Recommendation areas")} ({(value.recoZones || []).length})</h3>
           <div className="flex flex-wrap gap-2">
-            {(value.lines || []).map((line, i) => (
-              <span key={line.id} className="inline-flex items-center gap-2 rounded border px-2 py-1 text-sm">
-                <span className="inline-block h-1 w-6 rounded" style={{ backgroundColor: line.color }} />
-                {l("Ligne", "Line")} {i + 1}
-                <Button
-                  type="button" size="icon" variant="ghost"
-                  className="h-5 w-5 text-destructive hover:text-destructive"
-                  aria-label={l("Supprimer la ligne", "Delete line")}
-                  title={l("Supprimer la ligne", "Delete line")}
-                  onClick={() => onChange({ ...value, lines: (value.lines || []).filter((x) => x.id !== line.id) })}
+            {(value.recoZones || []).map((zone) => {
+              const style = RECO_STYLE[zone.kind];
+              return (
+                <button
+                  key={zone.id}
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-sm ${selectedRecoId === zone.id ? "ring-2 ring-foreground" : ""}`}
+                  style={{ borderColor: style.stroke, color: style.stroke }}
+                  onClick={() => {
+                    setSelectedRecoId(zone.id);
+                    setActiveTool("select");
+                    mapRef.current?.panTo({
+                      lat: (zone.bounds.north + zone.bounds.south) / 2,
+                      lng: (zone.bounds.east + zone.bounds.west) / 2,
+                    });
+                  }}
                 >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </span>
-            ))}
+                  {style.icon} {lang === "fr" ? style.labelFr : style.labelEn}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
