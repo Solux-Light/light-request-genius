@@ -53,10 +53,36 @@ export type PdfRecoZone = {
 };
 
 // Shared styling for recommendation zones (map, plan canvas and PDF legend).
+// Reco zones must be UNMISTAKABLY different from calculation zones (feedback
+// #3): calc zones = solid ~30% coloured fill with a thin outline; reco zones =
+// thick outline + near-transparent fill + a corner ✓/⛔ badge (and diagonal
+// hatching on the plan canvas), so the two can never be confused on a busy map.
 export const RECO_STYLE: Record<RecoKind, { stroke: string; fill: string; icon: string; labelFr: string; labelEn: string }> = {
-  recommended: { stroke: "#16a34a", fill: "#16a34a", icon: "✓", labelFr: "Zone recommandée", labelEn: "Recommended area" },
-  excluded: { stroke: "#dc2626", fill: "#dc2626", icon: "⛔", labelFr: "Zone exclue", labelEn: "Excluded area" },
+  recommended: { stroke: "#15803d", fill: "#22c55e", icon: "✓", labelFr: "Zone recommandée", labelEn: "Recommended area" },
+  excluded: { stroke: "#b91c1c", fill: "#ef4444", icon: "⛔", labelFr: "Zone exclue", labelEn: "Excluded area" },
 };
+
+// Google Maps RectangleF options for a reco zone — thick hollow box, distinct
+// from a calc polygon's thin outline + solid fill.
+export const recoMapRectOptions = (kind: RecoKind, selected = false, clickable = false) => {
+  const s = RECO_STYLE[kind];
+  return {
+    strokeColor: s.stroke,
+    strokeWeight: selected ? 5 : 4,
+    strokeOpacity: 1,
+    fillColor: s.fill,
+    fillOpacity: 0.06,
+    clickable,
+    zIndex: 6,
+  } as google.maps.RectangleOptions;
+};
+
+// The ✓/⛔ badge sits in the top-left corner of the rectangle, not the centre,
+// so it never hides what's inside and reads as an annotation marker.
+export const recoBadgePosition = (bounds: MapRecoZone["bounds"]) => ({
+  lat: bounds.north,
+  lng: bounds.west,
+});
 
 // An extra, independent viewport onto the same study map (feedback #5) —
 // lets distant zones each get a readable frame in the app and the PDF.

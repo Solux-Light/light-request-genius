@@ -2,8 +2,10 @@ import { memo, useMemo, useRef, useCallback } from "react";
 import { GoogleMap, PolygonF, RectangleF, MarkerF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
-import { MapArea, MapLamppost, MapRecoZone, MapFrame, RECO_STYLE, lamppostDisplay } from "@/types/solux";
+import { MapArea, MapLamppost, MapRecoZone, MapFrame, RECO_STYLE, recoMapRectOptions, recoBadgePosition, lamppostDisplay } from "@/types/solux";
 import { getLamppostIconOptions, getLamppostLabel } from "@/lib/lamppostIcon";
+import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
+import { Fragment } from "react";
 
 // Additional viewport onto the SAME study (Study Lab feedback #5).
 // Fully independent pan/zoom, read-only overlays: it lets a project whose
@@ -90,11 +92,16 @@ const MapFrameView = memo(function MapFrameView({
           {recoZones.map((zone) => {
             const style = RECO_STYLE[zone.kind];
             return (
-              <RectangleF
-                key={zone.id}
-                bounds={zone.bounds}
-                options={{ strokeColor: style.stroke, strokeWeight: 2, fillColor: style.fill, fillOpacity: 0.12, clickable: false }}
-              />
+              <Fragment key={zone.id}>
+                <RectangleF bounds={zone.bounds} options={recoMapRectOptions(zone.kind)} />
+                <MarkerF
+                  position={recoBadgePosition(zone.bounds)}
+                  clickable={false}
+                  zIndex={7}
+                  icon={{ path: MAP_SYMBOL_CIRCLE, scale: 11, fillColor: "#ffffff", fillOpacity: 1, strokeColor: style.stroke, strokeWeight: 2 }}
+                  label={{ text: style.icon, color: style.stroke, fontSize: "13px", fontWeight: "900" }}
+                />
+              </Fragment>
             );
           })}
           {lampposts.map((lp, i) => {

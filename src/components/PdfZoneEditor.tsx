@@ -244,29 +244,54 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
       }
     });
 
-    // Recommendation zones (green ✓ / red ⛔) — discreet fill so the plan
-    // stays readable; selected zone gets corner handles for resizing.
+    // Recommendation zones — DIAGONAL HATCHING + thick outline + corner badge
+    // so they can never be mistaken for a solid-filled calculation zone
+    // (feedback #3). Recommended = "/" hatch (green), excluded = "\" hatch (red).
     (value.recoZones || []).filter((rz) => rz.page === currentPage).forEach((rz) => {
       const style = RECO_STYLE[rz.kind];
       const x = rz.x * canvas.width, y = rz.y * canvas.height;
       const w = rz.w * canvas.width, h = rz.h * canvas.height;
-      ctx.fillStyle = style.fill + "1F"; // ≈12% alpha
+      const isSel = selectedRecoId === rz.id;
+      const forward = rz.kind === "recommended"; // hatch direction differs per kind
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      // faint tint so the box still reads as a region
+      ctx.fillStyle = style.fill + "14"; // ≈8% alpha
       ctx.fillRect(x, y, w, h);
+      // diagonal hatch lines
+      ctx.strokeStyle = style.stroke + "99";
+      ctx.lineWidth = 1.5;
+      const step = 12;
+      ctx.beginPath();
+      for (let d = -h; d < w + h; d += step) {
+        if (forward) { ctx.moveTo(x + d, y + h); ctx.lineTo(x + d + h, y); }
+        else { ctx.moveTo(x + d, y); ctx.lineTo(x + d + h, y + h); }
+      }
+      ctx.stroke();
+      ctx.restore();
+      // thick outline
       ctx.strokeStyle = style.stroke;
-      ctx.lineWidth = selectedRecoId === rz.id ? 3 : 2;
+      ctx.lineWidth = isSel ? 4 : 3;
       ctx.strokeRect(x, y, w, h);
-      // Type icon at the centre
-      ctx.font = "bold 18px Inter, system-ui";
+      // corner badge (top-left) — white disc + icon
+      const bx = x + 12, by = y + 12;
+      ctx.beginPath();
+      ctx.arc(bx, by, 10, 0, Math.PI * 2);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.font = "bold 13px Inter, system-ui";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = "#ffffff";
-      ctx.strokeText(style.icon, x + w / 2, y + h / 2);
       ctx.fillStyle = style.stroke;
-      ctx.fillText(style.icon, x + w / 2, y + h / 2);
+      ctx.fillText(style.icon, bx, by + 0.5);
       ctx.textBaseline = "alphabetic";
       // Resize handles when selected
-      if (selectedRecoId === rz.id) {
+      if (isSel) {
         [[x, y], [x + w, y], [x, y + h], [x + w, y + h]].forEach(([hx, hy]) => {
           ctx.fillStyle = "#ffffff";
           ctx.strokeStyle = style.stroke;
@@ -533,8 +558,16 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
   // exactly like the map behaves. ---
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
-    if (activeTool !== "select" && activeTool !== "lamppost") return;
     const { nx, ny } = canvasPoint(e);
+    // Reco = press-drag-release (feedback #2): start the rectangle here.
+    if (activeTool === "reco") {
+      setRecoStart({ x: nx, y: ny });
+      setRecoCursor({ x: nx, y: ny });
+      setPendingReco(null);
+      e.preventDefault();
+      return;
+    }
+    if (activeTool !== "select" && activeTool !== "lamppost") return;
     // Lampposts win (small targets), then the selected zone's resize handles,
     // then a zone body for moving.
     const lp = lampAt(nx, ny);
@@ -607,7 +640,21 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
       });
     }
   };
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
+    // Finish drawing a reco rectangle (press-drag-release).
+    if (activeTool === "reco" && recoStart) {
+      const { nx, ny } = canvasPoint(e);
+      const rect = {
+        x: Math.min(recoStart.x, nx),
+        y: Math.min(recoStart.y, ny),
+        w: Math.abs(nx - recoStart.x),
+        h: Math.abs(ny - recoStart.y),
+      };
+      setRecoStart(null);
+      setRecoCursor(null);
+      if (rect.w > 0.005 && rect.h > 0.005) setPendingReco(rect);
+      return;
+    }
     const finish = (ref: { current: { moved: boolean } | null }) => {
       const d = ref.current;
       if (!d) return;
@@ -647,20 +694,6 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         }
       }
       setLassoPath((prev) => [...prev, { x: nx, y: ny }]);
-    } else if (activeTool === "reco") {
-      if (!recoStart) {
-        setRecoStart({ x: nx, y: ny }); // first corner
-      } else {
-        // second corner → open the Recommended/Excluded chooser
-        setPendingReco({
-          x: Math.min(recoStart.x, nx),
-          y: Math.min(recoStart.y, ny),
-          w: Math.abs(nx - recoStart.x),
-          h: Math.abs(ny - recoStart.y),
-        });
-        setRecoStart(null);
-        setRecoCursor(null);
-      }
     } else if (activeTool === "lamppost") {
       const existing = lampAt(nx, ny);
       if (existing) {
@@ -778,8 +811,8 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
           </Button>
         </HelpTip>
         <HelpTip tip={l(
-          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez deux coins d'un rectangle, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
-          "Draws a recommended or excluded area for the Study Lab: click two corners of a rectangle, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
+          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez-glissez sur le plan pour tracer un rectangle, relâchez, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
+          "Draws a recommended or excluded area for the Study Lab: click and drag on the plan to draw a rectangle, release, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
         )}>
           <Button type="button" size="sm" variant={activeTool === "reco" ? "default" : "outline"} onClick={() => setActiveTool("reco")}>
             <SquareCheckBig className="h-4 w-4 mr-1" /> {l("Zone reco.", "Reco. zone")}
@@ -815,9 +848,7 @@ const PdfZoneEditor = memo(function PdfZoneEditor({ value, onChange, lang = "en"
         )}
         {activeTool === "reco" && !pendingReco && (
           <span className="text-xs text-muted-foreground">
-            {recoStart
-              ? l("Cliquez le coin opposé du rectangle", "Click the opposite corner of the rectangle")
-              : l("Cliquez un premier coin du rectangle", "Click the first corner of the rectangle")}
+            {l("Cliquez-glissez sur le plan pour dessiner un rectangle, puis relâchez", "Click and drag on the plan to draw a rectangle, then release")}
           </span>
         )}
         <div className="w-px h-6 bg-border" />

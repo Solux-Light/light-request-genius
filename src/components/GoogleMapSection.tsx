@@ -4,7 +4,7 @@ import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF, RectangleF } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool, SquareCheckBig, Ban, X } from "lucide-react";
-import { MapArea, MapLamppost, MapRecoZone, RecoKind, RECO_STYLE, COLOR_OPTIONS, lamppostDisplay } from "@/types/solux";
+import { MapArea, MapLamppost, MapRecoZone, RecoKind, RECO_STYLE, recoMapRectOptions, recoBadgePosition, COLOR_OPTIONS, lamppostDisplay } from "@/types/solux";
 import ColorSwatches from "@/components/ColorSwatches";
 import ConfirmButton from "@/components/ConfirmButton";
 import HelpTip from "@/components/HelpTip";
@@ -238,11 +238,12 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       gestureHandling: "greedy" as const,
       tilt: 0,
       heading: 0,
-      draggable: activeTool !== "lasso",
-      // While drawing, double-click means "finish the shape" — never "zoom in".
-      disableDoubleClickZoom: activeTool === "lasso" || activeTool === "reco",
+      // The map pans in Select AND Lamppost mode; it is locked only while
+      // actively drawing (lasso points, or a reco rectangle press-drag).
+      draggable: activeTool !== "lasso" && activeTool !== "reco",
+      disableDoubleClickZoom: activeTool === "lasso",
       draggableCursor:
-        activeTool === "select" ? "grab" : "crosshair",
+        activeTool === "lasso" || activeTool === "reco" ? "crosshair" : "grab",
     }),
     [activeTool]
   );
@@ -318,6 +319,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       setColorIndex(nextIdx);
     }
     setLassoPath([]);
+    // Feedback #1 — the moment a zone is finished, hand the map back to normal
+    // navigation (Select is draggable) so the user can pan/zoom immediately
+    // without clicking Select first.
+    setActiveTool("select");
   }, []);
 
   // Two corners → normalised rectangle bounds.
@@ -384,15 +389,6 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       }
       lastLassoClickRef.current = { t: now, x, y };
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
-    } else if (activeTool === "reco" && e.latLng) {
-      const pt = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      setRecoStart((start) => {
-        if (!start) return pt; // first corner
-        // second corner → open the Recommended/Excluded chooser
-        setPendingReco(cornersToBounds(start, pt));
-        setRecoCursor(null);
-        return null;
-      });
     } else if (activeTool === "lamppost" && e.latLng) {
       const count = (value.lampposts || []).length;
       const identity = lamppostDisplay({}, count);
@@ -422,11 +418,32 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     }
   }, [activeTool, closeLasso]);
 
-  // Live rectangle preview between the first and second corner clicks.
+  // Reco rectangle = press-drag-release (feedback #2): mousedown fixes the
+  // first corner, mousemove previews, mouseup opens the type chooser. Behaves
+  // like the rectangular-selection tool users know from other software.
+  const handleMapMouseDown = useCallback((e: google.maps.MapMouseEvent) => {
+    if (activeTool === "reco" && e.latLng) {
+      setRecoStart({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      setRecoCursor({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      setPendingReco(null);
+    }
+  }, [activeTool]);
+
   const handleMapMouseMove = useCallback((e: google.maps.MapMouseEvent) => {
     if (activeTool === "reco" && recoStart && e.latLng) {
       setRecoCursor({ lat: e.latLng.lat(), lng: e.latLng.lng() });
     }
+  }, [activeTool, recoStart]);
+
+  const handleMapMouseUp = useCallback((e: google.maps.MapMouseEvent) => {
+    if (activeTool !== "reco" || !recoStart || !e.latLng) return;
+    const end = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    const bounds = cornersToBounds(recoStart, end);
+    setRecoStart(null);
+    setRecoCursor(null);
+    // Ignore an accidental click with no real drag.
+    if (Math.abs(bounds.north - bounds.south) < 1e-6 || Math.abs(bounds.east - bounds.west) < 1e-6) return;
+    setPendingReco(bounds);
   }, [activeTool, recoStart]);
 
   const clearArea = (id: string) => {
@@ -522,8 +539,8 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
           </Button>
         </HelpTip>
         <HelpTip tip={l(
-          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez deux coins d'un rectangle, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
-          "Draws a recommended or excluded area for the Study Lab: click two corners of a rectangle, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
+          "Dessine une zone recommandée ou exclue pour le Study Lab : cliquez-glissez sur la carte pour tracer un rectangle, relâchez, puis choisissez ✓ Recommandée (installer ici de préférence) ou ⛔ Exclue (ne pas installer ici). Utilisez-le pour transmettre vos contraintes de terrain sans texte.",
+          "Draws a recommended or excluded area for the Study Lab: click and drag on the map to draw a rectangle, release, then choose ✓ Recommended (preferably install here) or ⛔ Excluded (do not install here). Use it to pass on field constraints without writing text.",
         )}>
           <Button
             type="button" size="sm"
@@ -567,9 +584,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
         )}
         {activeTool === "reco" && !pendingReco && (
           <span className="text-xs text-muted-foreground">
-            {recoStart
-              ? l("Cliquez le coin opposé du rectangle", "Click the opposite corner of the rectangle")
-              : l("Cliquez un premier coin du rectangle", "Click the first corner of the rectangle")}
+            {l("Cliquez-glissez sur la carte pour dessiner un rectangle, puis relâchez", "Click and drag on the map to draw a rectangle, then release")}
           </span>
         )}
       </div>
@@ -608,7 +623,9 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
           onIdle={onMapIdle}
           onClick={handleMapClick}
           onDblClick={handleMapDblClick}
+          onMouseDown={handleMapMouseDown}
           onMouseMove={handleMapMouseMove}
+          onMouseUp={handleMapMouseUp}
           options={mapOptions}
         >
           {/* Polygons */}
@@ -621,28 +638,20 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             />
           ))}
 
-          {/* Recommendation zones — green ✓ / red ⛔ rectangles the Study Lab
-              reads at a glance. Selected → draggable + resizable natively. */}
+          {/* Recommendation zones — deliberately NOT like calc zones: a thick
+              hollow box with a corner ✓/⛔ badge (feedback #3). Selected →
+              draggable + resizable natively. */}
           {(value.recoZones || []).map((zone) => {
             const style = RECO_STYLE[zone.kind];
             const isSelected = selectedRecoId === zone.id;
-            const center = {
-              lat: (zone.bounds.north + zone.bounds.south) / 2,
-              lng: (zone.bounds.east + zone.bounds.west) / 2,
-            };
             return (
               <Fragment key={zone.id}>
                 <RectangleF
                   bounds={zone.bounds}
                   options={{
-                    strokeColor: style.stroke,
-                    strokeWeight: isSelected ? 3 : 2,
-                    fillColor: style.fill,
-                    fillOpacity: 0.12,
-                    clickable: activeTool === "select",
+                    ...recoMapRectOptions(zone.kind, isSelected, activeTool === "select"),
                     editable: isSelected,
                     draggable: isSelected,
-                    zIndex: 5,
                   }}
                   onLoad={(rect) => { recoRectsRef.current[zone.id] = rect; }}
                   onUnmount={() => { delete recoRectsRef.current[zone.id]; }}
@@ -651,26 +660,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
                   onDragEnd={() => commitRecoBounds(zone.id)}
                 />
                 <MarkerF
-                  position={center}
+                  position={recoBadgePosition(zone.bounds)}
                   clickable={false}
-                  icon={{ path: MAP_SYMBOL_CIRCLE, scale: 0, fillOpacity: 0 }}
-                  label={{ text: style.icon, color: style.stroke, fontSize: "16px", fontWeight: "900" }}
+                  zIndex={7}
+                  icon={{ path: MAP_SYMBOL_CIRCLE, scale: 11, fillColor: "#ffffff", fillOpacity: 1, strokeColor: style.stroke, strokeWeight: 2 }}
+                  label={{ text: style.icon, color: style.stroke, fontSize: "13px", fontWeight: "900" }}
                 />
               </Fragment>
             );
           })}
 
-          {/* Rectangle preview while placing the second corner */}
+          {/* Rectangle preview while dragging (press-drag-release) */}
           {recoStart && recoCursor && (
             <RectangleF
               bounds={cornersToBounds(recoStart, recoCursor)}
-              options={{ strokeColor: "#64748b", strokeWeight: 2, fillColor: "#64748b", fillOpacity: 0.08, clickable: false }}
+              options={{ strokeColor: "#334155", strokeWeight: 2, fillColor: "#334155", fillOpacity: 0.06, clickable: false }}
             />
           )}
           {pendingReco && (
             <RectangleF
               bounds={pendingReco}
-              options={{ strokeColor: "#64748b", strokeWeight: 2, fillColor: "#64748b", fillOpacity: 0.12, clickable: false }}
+              options={{ strokeColor: "#334155", strokeWeight: 2, fillColor: "#334155", fillOpacity: 0.08, clickable: false }}
             />
           )}
 

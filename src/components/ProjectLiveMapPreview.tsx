@@ -1,6 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useCallback } from "react";
 import { GoogleMap, useJsApiLoader, PolygonF, RectangleF, MarkerF } from "@react-google-maps/api";
-import { MapArea, MapLamppost, MapRecoZone, RECO_STYLE, lamppostDisplay } from "@/types/solux";
+import { MapArea, MapLamppost, MapRecoZone, RECO_STYLE, recoMapRectOptions, recoBadgePosition, lamppostDisplay } from "@/types/solux";
 import { getLamppostIconOptions, getLamppostLabel } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
@@ -24,6 +24,24 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, recoZones =
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
 
+  // When several previews mount at once (a project map + its additional
+  // frames), Google Maps only fetches tiles for the first and leaves the
+  // others grey until a resize — so the extra frames appeared blank in the
+  // PDF. Trigger resize + re-centre after each map loads so EVERY frame
+  // paints its imagery. (feedback #4)
+  const handleLoad = useCallback((map: google.maps.Map) => {
+    const c = center || location;
+    const z = zoom || 16;
+    const settle = () => {
+      google.maps.event.trigger(map, "resize");
+      map.setCenter(c);
+      map.setZoom(z);
+    };
+    // A couple of delayed passes cover the initial layout + late mounts.
+    setTimeout(settle, 150);
+    setTimeout(settle, 600);
+  }, [center, location, zoom]);
+
   if (loadError || !isLoaded) {
     return (
       <ProjectMapPreviewFallback location={location} areas={areas} lampposts={lampposts} />
@@ -34,6 +52,7 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, recoZones =
     <div className="relative" style={{ aspectRatio: "2/1" }}>
       <GoogleMap
         mapContainerStyle={{ width: "100%", height: "100%" }}
+        onLoad={handleLoad}
         center={center || location}
         zoom={zoom || 16}
         options={{
@@ -59,25 +78,19 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, recoZones =
           />
         ))}
 
-        {/* Recommendation zones — the Study Lab must see the exact same
-            indications in the PDF as in the app. */}
+        {/* Recommendation zones — same distinct style as in the editor (thick
+            hollow box + corner ✓/⛔ badge) so the PDF matches the app. */}
         {recoZones.map((zone) => {
           const style = RECO_STYLE[zone.kind];
-          const zCenter = {
-            lat: (zone.bounds.north + zone.bounds.south) / 2,
-            lng: (zone.bounds.east + zone.bounds.west) / 2,
-          };
           return (
             <Fragment key={zone.id}>
-              <RectangleF
-                bounds={zone.bounds}
-                options={{ strokeColor: style.stroke, strokeWeight: 2, fillColor: style.fill, fillOpacity: 0.12, clickable: false }}
-              />
+              <RectangleF bounds={zone.bounds} options={recoMapRectOptions(zone.kind)} />
               <MarkerF
-                position={zCenter}
+                position={recoBadgePosition(zone.bounds)}
                 clickable={false}
-                icon={{ path: MAP_SYMBOL_CIRCLE, scale: 0, fillOpacity: 0 }}
-                label={{ text: style.icon, color: style.stroke, fontSize: "16px", fontWeight: "900" }}
+                zIndex={7}
+                icon={{ path: MAP_SYMBOL_CIRCLE, scale: 11, fillColor: "#ffffff", fillOpacity: 1, strokeColor: style.stroke, strokeWeight: 2 }}
+                label={{ text: style.icon, color: style.stroke, fontSize: "13px", fontWeight: "900" }}
               />
             </Fragment>
           );
