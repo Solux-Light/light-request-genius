@@ -21,7 +21,9 @@ export type SavedProject = { id: string; name: string; savedAt: string; form: So
 const sanitizeAnnotation = (ann: PdfZoneValue, stripPreview: boolean): PdfZoneValue => ({
   ...ann,
   pdfUrl: ann.pdfUrl && ann.pdfUrl.startsWith("blob:") ? "" : ann.pdfUrl,
-  ...(stripPreview ? { previewImage: "" } : {}),
+  // Preview + extra view frames are base64 images — stripped from the rolling
+  // autosave (quota), kept in named saves where possible.
+  ...(stripPreview ? { previewImage: "", extraFrames: [] } : {}),
 });
 
 export const sanitizeFormForStorage = (form: SoluxForm, stripPreviews: boolean): SoluxForm => ({
@@ -47,6 +49,8 @@ const reviveForm = (stored: Partial<SoluxForm>): SoluxForm => {
   const merged: SoluxForm = { ...base, ...stored };
   merged.areas = asArray(stored.areas, base.areas);
   merged.lampposts = asArray(stored.lampposts, base.lampposts);
+  merged.mapLines = asArray(stored.mapLines, base.mapLines);
+  merged.extraMapFrames = asArray(stored.extraMapFrames, base.extraMapFrames);
   merged.roadProfile = asArray(stored.roadProfile, base.roadProfile);
   merged.roadDocuments = asArray(stored.roadDocuments, base.roadDocuments);
   merged.productAssignments = asArray(stored.productAssignments, base.productAssignments);
@@ -60,6 +64,8 @@ const reviveForm = (stored: Partial<SoluxForm>): SoluxForm => {
     ...plan,
     zones: asArray(plan.zones, base.pdfPlan.zones),
     lampposts: asArray(plan.lampposts, base.pdfPlan.lampposts),
+    lines: asArray(plan.lines, []),
+    extraFrames: asArray(plan.extraFrames, []),
   };
 
   // Product hierarchy migration — drafts saved before the family→model split

@@ -3,11 +3,12 @@ import { uid } from "@/lib/utils";
 import { GoogleMap, useJsApiLoader, PolygonF, MarkerF, PolylineF } from "@react-google-maps/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool } from "lucide-react";
-import { MapArea, MapLamppost, COLOR_OPTIONS } from "@/types/solux";
+import { Pencil, Trash2, RotateCcw, RotateCw, Plus, Minus, MousePointer, PenTool, Spline } from "lucide-react";
+import { MapArea, MapLamppost, MapLine, COLOR_OPTIONS, lamppostDisplay } from "@/types/solux";
 import ColorSwatches from "@/components/ColorSwatches";
 import ConfirmButton from "@/components/ConfirmButton";
-import { getLamppostIconOptions, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
+import { Label } from "@/components/ui/label";
+import { getLamppostIconOptions, getLamppostLabel, LAMPPOST_SELECTION_STROKE } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
@@ -42,6 +43,7 @@ export interface MapSectionValue {
   location?: { lat: number; lng: number } | null;
   areas: MapArea[];
   lampposts: MapLamppost[];
+  lines: MapLine[];
 }
 
 interface Props {
@@ -80,12 +82,18 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
   const [mapType, setMapType] = useState<string>("satellite");
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0]);
   const [colorIndex, setColorIndex] = useState(0);
-  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost">("select");
+  const [activeTool, setActiveTool] = useState<"lasso" | "select" | "lamppost" | "line">("select");
   const [lamppostType, setLamppostType] = useState<"single" | "double">("single");
   const [selectedLamppostId, setSelectedLamppostId] = useState<string | null>(null);
   const [editingAreaId, setEditingAreaId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingColor, setEditingColor] = useState(COLOR_OPTIONS[0]);
+
+  // In-progress indication line (feedback #2) — same click-to-add mechanics
+  // as the lasso, but an OPEN polyline committed on double-click / Finish.
+  const [linePath, setLinePath] = useState<{ lat: number; lng: number }[]>([]);
+  const linePathRef = useRef(linePath);
+  linePathRef.current = linePath;
 
   // Lasso state (click-to-add mode).
   const [lassoPath, setLassoPath] = useState<{ lat: number; lng: number }[]>([]);
@@ -216,11 +224,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       gestureHandling: "greedy" as const,
       tilt: 0,
       heading: 0,
-      draggable: activeTool !== "lasso",
-      // While drawing, double-click means "close the zone" — never "zoom in".
-      disableDoubleClickZoom: activeTool === "lasso",
+      draggable: activeTool !== "lasso" && activeTool !== "line",
+      // While drawing, double-click means "finish the shape" — never "zoom in".
+      disableDoubleClickZoom: activeTool === "lasso" || activeTool === "line",
       draggableCursor:
-        activeTool === "lasso" ? "crosshair" : activeTool === "lamppost" ? "crosshair" : "grab",
+        activeTool === "select" ? "grab" : "crosshair",
     }),
     [activeTool]
   );
@@ -235,11 +243,14 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             fillOpacity: 0.3,
             strokeColor: area.color,
             strokeWeight: 2,
-            clickable: true,
+            // Zones only capture clicks in Select mode. In every drawing mode
+            // they must be transparent to clicks, otherwise a lamppost / lasso
+            // point / line point can never be placed INSIDE a zone (feedback #1).
+            clickable: activeTool === "select",
           },
         ])
       ),
-    [value.areas]
+    [value.areas, activeTool]
   );
 
   const lassoPolylineOptions = useMemo(
@@ -295,6 +306,19 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     setLassoPath([]);
   }, []);
 
+  // Finish the current indication line (open polyline, ≥2 points). Same
+  // ref-based reading as closeLasso so stale Maps listeners can't break it.
+  const finishLine = useCallback(() => {
+    const path = linePathRef.current;
+    lastLassoClickRef.current = null;
+    if (path.length >= 2) {
+      const current = valueRef.current;
+      const newLine: MapLine = { id: uid(), path, color: selectedColorRef.current };
+      onChangeRef.current({ ...current, lines: [...(current.lines || []), newLine] });
+    }
+    setLinePath([]);
+  }, []);
+
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (Date.now() < suppressMapClickUntilRef.current) {
       return;
@@ -315,19 +339,38 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       }
       lastLassoClickRef.current = { t: now, x, y };
       setLassoPath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
+    } else if (activeTool === "line" && e.latLng) {
+      // Same burst-double-click detection as the lasso.
+      const now = Date.now();
+      const dom = e.domEvent instanceof MouseEvent ? e.domEvent : null;
+      const x = dom?.clientX ?? 0;
+      const y = dom?.clientY ?? 0;
+      const last = lastLassoClickRef.current;
+      if (last && now - last.t < 400 && Math.hypot(x - last.x, y - last.y) < 12) {
+        finishLine();
+        return;
+      }
+      lastLassoClickRef.current = { t: now, x, y };
+      setLinePath((prev) => [...prev, { lat: e.latLng!.lat(), lng: e.latLng!.lng() }]);
     } else if (activeTool === "lamppost" && e.latLng) {
+      const count = (value.lampposts || []).length;
+      const identity = lamppostDisplay({}, count);
       const newLamppost: MapLamppost = {
         id: uid(),
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
         type: lamppostType,
         rotation: 0,
+        // Feedback #4 — every pole is born with its own colour + number.
+        color: identity.color,
+        label: identity.label,
       };
       onChange({ ...value, lampposts: [...(value.lampposts || []), newLamppost] });
       setSelectedLamppostId(newLamppost.id);
-      setActiveTool("select");
+      // Stay in lamppost mode so several poles can be placed in a row —
+      // including directly inside zones (feedback #1).
     }
-  }, [activeTool, lamppostType, onChange, value, closeLasso]);
+  }, [activeTool, lamppostType, onChange, value, closeLasso, finishLine]);
 
   // Backup close path — kept for the case where the two burst clicks land
   // just outside the 12px tolerance (e.g. a fast hand on a trackpad).
@@ -335,8 +378,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
     if (activeTool === "lasso") {
       e.stop();
       closeLasso();
+    } else if (activeTool === "line") {
+      e.stop();
+      finishLine();
     }
-  }, [activeTool, closeLasso]);
+  }, [activeTool, closeLasso, finishLine]);
 
   const clearArea = (id: string) => {
     onChange({ ...value, areas: value.areas.filter((a) => a.id !== id) });
@@ -424,6 +470,17 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
         </Button>
         <Button
           type="button" size="sm"
+          variant={activeTool === "line" ? "default" : "outline"}
+          onClick={() => setActiveTool("line")}
+          title={l(
+            "Tracer des lignes d'indication pour le Study Lab (ex. rouge = pas de lampadaires, vert = installation possible)",
+            "Draw indication lines for the Study Lab (e.g. red = no lampposts, green = installation allowed)",
+          )}
+        >
+          <Spline className="h-4 w-4 mr-1" /> {l("Ligne", "Line")}
+        </Button>
+        <Button
+          type="button" size="sm"
           variant={activeTool === "lamppost" ? "default" : "outline"}
           onClick={() => setActiveTool("lamppost")}
           title={l("Placer les positions de lampadaires existants ou proposés", "Place the existing or proposed lamp-post positions on the map")}
@@ -450,6 +507,16 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             {l("Cliquez pour placer des points, double-clic ou cliquez le 1er point pour fermer", "Click to place points, double-click or click first point to close")}
           </span>
         )}
+        {activeTool === "line" && linePath.length > 0 && (
+          <Button type="button" size="sm" variant="default" onClick={finishLine} disabled={linePath.length < 2}>
+            ✓ {l("Terminer la ligne", "Finish line")} ({linePath.length} pts)
+          </Button>
+        )}
+        {activeTool === "line" && linePath.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            {l("Choisissez une couleur puis cliquez pour tracer — double-clic pour terminer (ex. rouge = pas de lampadaires, vert = autorisé)", "Pick a colour then click to draw — double-click to finish (e.g. red = no lampposts, green = allowed)")}
+          </span>
+        )}
       </div>
 
       {/* Map */}
@@ -471,6 +538,28 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
               onClick={() => startEditing(area)}
             />
           ))}
+
+          {/* Committed indication lines (feedback #2) */}
+          {(value.lines || []).map((line) => (
+            <PolylineF
+              key={line.id}
+              path={line.path}
+              options={{ strokeColor: line.color, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
+            />
+          ))}
+
+          {/* In-progress indication line */}
+          {linePath.length > 0 && (
+            <>
+              <PolylineF
+                path={linePath}
+                options={{ strokeColor: selectedColor, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
+              />
+              {linePath.map((pt, i) => (
+                <MarkerF key={`line-pt-${i}`} position={pt} icon={lassoPointIcon(i === 0 ? 1 : i)} clickable={false} />
+              ))}
+            </>
+          )}
 
           {/* Lasso path */}
           {lassoPath.length > 0 && (
@@ -498,10 +587,11 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
           )}
 
           {/* Lampposts */}
-          {(value.lampposts || []).map((lp) => (
+          {(value.lampposts || []).map((lp, idx) => (
             <LamppostMarker
               key={lp.id}
               lamppost={lp}
+              index={idx}
               selected={selectedLamppostId === lp.id}
               onSelect={() => {
                 suppressMapClickUntilRef.current = Date.now() + MAP_CLICK_SUPPRESSION_MS;
@@ -520,7 +610,10 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
             />
           ))}
 
-          {/* Selected lamppost marker highlight only */}
+          {/* Selected lamppost highlight ring — clickable:false is essential:
+              the ring sits ON TOP of the pole marker, and a clickable ring
+              swallowed every drag, making the SELECTED lamppost the only one
+              that could not be moved (feedback #1). */}
           {selectedLamppostId && (() => {
             const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
             if (!lp) return null;
@@ -530,6 +623,7 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
                 position={{ lat: lp.lat, lng: lp.lng }}
                 zIndex={999}
                 icon={selectionRingIcon}
+                clickable={false}
               />
             );
           })()}
@@ -582,10 +676,27 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
       </div>
 
       {selectedLamppostId && (() => {
-        const lp = (value.lampposts || []).find((l) => l.id === selectedLamppostId);
+        const lpIndex = (value.lampposts || []).findIndex((l) => l.id === selectedLamppostId);
+        const lp = lpIndex >= 0 ? (value.lampposts || [])[lpIndex] : null;
         if (!lp) return null;
+        const identity = lamppostDisplay(lp, lpIndex);
         return (
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-sm" onMouseDown={blockMapInteraction} onClick={blockMapInteraction}>
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 shadow-sm" onMouseDown={blockMapInteraction} onClick={blockMapInteraction}>
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold text-white" style={{ backgroundColor: identity.color }}>
+              {identity.label}
+            </span>
+            <Label className="text-xs text-muted-foreground">{l("Nom", "Name")}</Label>
+            <Input
+              className="h-7 w-24 text-sm"
+              value={lp.label ?? identity.label}
+              maxLength={12}
+              onChange={(e) => {
+                onChange({
+                  ...value,
+                  lampposts: (value.lampposts || []).map((x) => (x.id === lp.id ? { ...x, label: e.target.value } : x)),
+                });
+              }}
+            />
             <span className="text-sm text-muted-foreground">{l("Orientation", "Orientation")}: {lp.rotation || 0}°</span>
             <Button type="button" size="sm" variant="outline" onClick={(e) => { blockMapInteraction(e); rotateLamppost(lp.id, -15); }}>
               <RotateCcw className="h-4 w-4" />
@@ -647,11 +758,56 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
         </div>
       )}
 
-      {/* Lamppost count */}
+      {/* Indication lines (feedback #2) */}
+      {(value.lines || []).length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">{l("Lignes d'indication", "Indication lines")} ({(value.lines || []).length})</h3>
+          <div className="flex flex-wrap gap-2">
+            {(value.lines || []).map((line, i) => (
+              <span key={line.id} className="inline-flex items-center gap-2 rounded border px-2 py-1 text-sm">
+                <span className="inline-block h-1 w-6 rounded" style={{ backgroundColor: line.color }} />
+                {l("Ligne", "Line")} {i + 1}
+                <Button
+                  type="button" size="icon" variant="ghost"
+                  className="h-5 w-5 text-destructive hover:text-destructive"
+                  aria-label={l("Supprimer la ligne", "Delete line")}
+                  title={l("Supprimer la ligne", "Delete line")}
+                  onClick={() => onChange({ ...value, lines: (value.lines || []).filter((x) => x.id !== line.id) })}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lamppost legend (feedback #4) — colour + number so sales and the
+          Study Lab can refer to a precise pole. Click to select it. */}
       {(value.lampposts || []).length > 0 && (
-        <p className="text-sm text-muted-foreground">
-          💡 {(value.lampposts || []).length} {l("lampadaire(s)", "lamppost(s)")}
-        </p>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">💡 {(value.lampposts || []).length} {l("lampadaire(s)", "lamppost(s)")}</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {(value.lampposts || []).map((lp, i) => {
+              const identity = lamppostDisplay(lp, i);
+              return (
+                <button
+                  key={lp.id}
+                  type="button"
+                  className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${selectedLamppostId === lp.id ? "ring-2 ring-offset-1 ring-foreground" : ""}`}
+                  style={{ backgroundColor: identity.color }}
+                  title={`${identity.label} — ${lp.type === "double" ? l("double", "double") : l("simple", "single")}`}
+                  onClick={() => {
+                    setSelectedLamppostId(lp.id);
+                    mapRef.current?.panTo({ lat: lp.lat, lng: lp.lng });
+                  }}
+                >
+                  {identity.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -659,27 +815,33 @@ const GoogleMapSection = ({ apiKey, value, onChange, onMapViewChange, lassoReque
 
 type LamppostMarkerProps = {
   lamppost: MapLamppost;
+  index: number;
   selected: boolean;
   onSelect: () => void;
   onDragEnd: (lat: number, lng: number) => void;
 };
 
-const LamppostMarker = memo(({ lamppost, selected, onSelect, onDragEnd }: LamppostMarkerProps) => {
+const LamppostMarker = memo(({ lamppost, index, selected, onSelect, onDragEnd }: LamppostMarkerProps) => {
+  const identity = lamppostDisplay(lamppost, index);
   const icon = useMemo(
     () =>
       getLamppostIconOptions({
         type: lamppost.type,
         rotation: lamppost.rotation || 0,
         selected,
+        color: identity.color,
       }),
-    [lamppost.type, lamppost.rotation, selected]
+    [lamppost.type, lamppost.rotation, selected, identity.color]
   );
+  // Visible identifier (feedback #4) — rendered just above the icon.
+  const label = useMemo(() => getLamppostLabel(identity.label, identity.color), [identity.label, identity.color]);
 
   return (
     <MarkerF
       position={{ lat: lamppost.lat, lng: lamppost.lng }}
       draggable
       icon={icon}
+      label={label}
       onClick={onSelect}
       onDragEnd={(e) => {
         if (e.latLng) onDragEnd(e.latLng.lat(), e.latLng.lng());

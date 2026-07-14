@@ -3,6 +3,7 @@ import {
   SoluxForm, SEGMENT_COLORS, LightingSegment,
   formatHeight, ProfileProgram, segmentTypeLabel, profileKindLabel,
   productDisplay, migrateLegacyProduct, migrateLegacyLuminaireFamily,
+  lamppostDisplay,
 } from "@/types/solux";
 import { earthWebUrl } from "@/lib/kml";
 import { segmentColor } from "@/lib/program";
@@ -152,7 +153,8 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           </section>
         )}
 
-        {/* Map preview (zone + map mode) */}
+        {/* Map preview (zone + map mode) — main frame + every additional
+            frame the user added for far-apart areas (feedback #5). */}
         {form.projectType === "zone" && form.locationMode === "map" && form.location && (
           <section style={{ marginBottom: 20 }}>
             <H2>{l("Carte du projet", "Project Map")}</H2>
@@ -163,13 +165,49 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
                   location={form.location}
                   areas={form.areas}
                   lampposts={form.lampposts}
+                  lines={form.mapLines}
                   zoom={form.mapZoom}
                   center={form.mapCenter}
                   lang={lang}
                 />
+                {(form.extraMapFrames || []).map((frame, i) => (
+                  <div key={frame.id} style={{ marginTop: 10 }}>
+                    <ProjectLiveMapPreview
+                      apiKey={apiKey}
+                      location={form.location!}
+                      areas={form.areas}
+                      lampposts={form.lampposts}
+                      lines={form.mapLines}
+                      zoom={frame.zoom ?? form.mapZoom}
+                      center={frame.center ?? form.mapCenter}
+                      lang={lang}
+                      title={`${l("Vue supplémentaire", "Additional view")} ${i + 2}`}
+                    />
+                  </div>
+                ))}
               </div>
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>{l("Carte non disponible", "Map not available")}</p>
+            )}
+            {/* Lamppost identification legend (feedback #4) */}
+            {form.lampposts.length > 0 && (
+              <p style={{ fontSize: 10, marginTop: 6 }}>
+                {form.lampposts.map((lp, i) => {
+                  const identity = lamppostDisplay(lp, i);
+                  return (
+                    <span key={lp.id} style={{ marginRight: 10, whiteSpace: "nowrap" }}>
+                      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 5, backgroundColor: identity.color, marginRight: 3, verticalAlign: "middle" }} />
+                      <strong>{identity.label}</strong> ({lp.type === "double" ? l("double", "double") : l("simple", "single")})
+                    </span>
+                  );
+                })}
+              </p>
+            )}
+            {form.planNotes && (
+              <div style={{ marginTop: 8, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 4, backgroundColor: "#f9fafb" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, marginBottom: 2 }}>{l("Commentaires sur le plan", "Plan comments")}</p>
+                <p style={{ fontSize: 11, whiteSpace: "pre-wrap" }}>{form.planNotes}</p>
+              </div>
             )}
           </section>
         )}
@@ -199,11 +237,38 @@ const PdfSubmissionDocument = forwardRef<HTMLDivElement, Props>(
           </section>
         )}
 
-        {/* Plan preview (PDF/image) or stored CAD reference */}
+        {/* Plan preview (PDF/image) or stored CAD reference. The preview is
+            captured from the user's EXACT last framing (feedback #8), and any
+            extra saved views follow it (feedback #5). */}
         {form.projectType === "zone" && form.locationMode === "pdf" && form.pdfPlan.previewImage && (
           <section style={{ marginBottom: 20 }}>
             <H2>{l("Plan du projet", "Project Plan")}</H2>
             <img src={form.pdfPlan.previewImage} alt="Plan" style={{ maxWidth: "100%", border: "1px solid #e5e7eb", borderRadius: 4 }} />
+            {(form.pdfPlan.extraFrames || []).map((f, i) => (
+              <div key={f.id} style={{ marginTop: 10 }}>
+                <p style={{ fontSize: 10, fontWeight: 700, marginBottom: 2 }}>{l("Vue supplémentaire", "Additional view")} {i + 2}</p>
+                <img src={f.image} alt={`Plan view ${i + 2}`} style={{ maxWidth: "100%", border: "1px solid #e5e7eb", borderRadius: 4 }} />
+              </div>
+            ))}
+            {(form.pdfPlan.lampposts || []).length > 0 && (
+              <p style={{ fontSize: 10, marginTop: 6 }}>
+                {(form.pdfPlan.lampposts || []).map((lp, i) => {
+                  const identity = lamppostDisplay(lp, i);
+                  return (
+                    <span key={lp.id} style={{ marginRight: 10, whiteSpace: "nowrap" }}>
+                      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 5, backgroundColor: identity.color, marginRight: 3, verticalAlign: "middle" }} />
+                      <strong>{identity.label}</strong> ({lp.type === "double" ? l("double", "double") : l("simple", "single")})
+                    </span>
+                  );
+                })}
+              </p>
+            )}
+            {form.planNotes && (
+              <div style={{ marginTop: 8, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 4, backgroundColor: "#f9fafb" }}>
+                <p style={{ fontSize: 10, fontWeight: 700, marginBottom: 2 }}>{l("Commentaires sur le plan", "Plan comments")}</p>
+                <p style={{ fontSize: 11, whiteSpace: "pre-wrap" }}>{form.planNotes}</p>
+              </div>
+            )}
           </section>
         )}
         {form.projectType === "zone" && form.locationMode === "pdf" && !form.pdfPlan.previewImage && (form.pdfPlan.sourceKind === "dwg" || form.pdfPlan.sourceKind === "dxf") && (

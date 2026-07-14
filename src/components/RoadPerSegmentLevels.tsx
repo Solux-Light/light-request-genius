@@ -49,7 +49,7 @@ const RoadPerSegmentLevels = memo(function RoadPerSegmentLevels({ roadProfile, v
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">CCT</Label>
-                  <CctSelect value={segLighting.cct} onChange={(v) => setSeg({ cct: v })} />
+                  <CctSelect value={segLighting.cct} onChange={(v) => setSeg({ cct: v })} lang={lang} />
                 </div>
               </div>
             </CardContent>

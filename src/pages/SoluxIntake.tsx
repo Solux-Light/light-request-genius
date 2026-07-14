@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { deepClone } from "@/lib/utils";
+import { deepClone, uid } from "@/lib/utils";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Home, Send, Globe, MessageSquareText, AlertCircle, PenTool, Trash2, FileUp } from "lucide-react";
+import { Home, Send, Globe, MessageSquareText, AlertCircle, PenTool, Trash2, FileUp, Plus } from "lucide-react";
 import GoogleMapSection from "@/components/GoogleMapSection";
+import MapFrameView from "@/components/MapFrameView";
 import PdfZoneEditor from "@/components/PdfZoneEditor";
 import ProductSelectionSection from "@/components/ProductSelectionSection";
 import MultiProductSection from "@/components/MultiProductSection";
@@ -271,7 +272,8 @@ const SoluxIntake = () => {
     location: form.location,
     areas: form.areas,
     lampposts: form.lampposts,
-  }), [form.address, form.location, form.areas, form.lampposts]);
+    lines: form.mapLines,
+  }), [form.address, form.location, form.areas, form.lampposts, form.mapLines]);
   const zoneProgram = useMemo(() => ({
     nightHours: form.lightingNightHours,
     morningTimeH: form.morningTimeH,
@@ -292,6 +294,7 @@ const SoluxIntake = () => {
       location?: { lat: number; lng: number } | null;
       areas: SoluxForm["areas"];
       lampposts: SoluxForm["lampposts"];
+      lines: SoluxForm["mapLines"];
     }) => {
       setForm((f) => ({
         ...f,
@@ -299,10 +302,35 @@ const SoluxIntake = () => {
         ...(val.location !== undefined ? { location: val.location } : {}),
         areas: val.areas,
         lampposts: val.lampposts,
+        mapLines: val.lines,
       }));
     },
     []
   );
+
+  // --- Additional map frames (Study Lab feedback #5) ---
+  const handleAddMapFrame = useCallback(() => {
+    setForm((f) => ({
+      ...f,
+      extraMapFrames: [
+        ...f.extraMapFrames,
+        { id: uid(), center: f.mapCenter ?? f.location ?? null, zoom: f.mapZoom ?? null },
+      ],
+    }));
+  }, []);
+  const handleFrameViewChange = useCallback((id: string, center: { lat: number; lng: number }, zoom: number) => {
+    setForm((f) => {
+      const cur = f.extraMapFrames.find((fr) => fr.id === id);
+      if (cur && cur.center?.lat === center.lat && cur.center?.lng === center.lng && cur.zoom === zoom) return f;
+      return {
+        ...f,
+        extraMapFrames: f.extraMapFrames.map((fr) => (fr.id === id ? { ...fr, center, zoom } : fr)),
+      };
+    });
+  }, []);
+  const handleFrameRemove = useCallback((id: string) => {
+    setForm((f) => ({ ...f, extraMapFrames: f.extraMapFrames.filter((fr) => fr.id !== id) }));
+  }, []);
 
   const handleMapViewChange = useCallback((zoom: number, center: { lat: number; lng: number }) => {
     setForm((f) => {
@@ -880,6 +908,38 @@ const SoluxIntake = () => {
                             lassoRequestSignal={lassoSignal}
                             lang={lang}
                           />
+                          {/* Feedback #5 — extra independent viewports for
+                              projects whose zones are far apart. */}
+                          {form.extraMapFrames.map((frame, i) => (
+                            <div key={frame.id} className="mt-4">
+                              <MapFrameView
+                                frame={frame}
+                                index={i}
+                                areas={form.areas}
+                                lampposts={form.lampposts}
+                                lines={form.mapLines}
+                                fallbackCenter={form.mapCenter ?? form.location ?? { lat: 46.2276, lng: 2.2137 }}
+                                fallbackZoom={form.mapZoom ?? 15}
+                                onViewChange={handleFrameViewChange}
+                                onRemove={handleFrameRemove}
+                                lang={lang}
+                              />
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            onClick={handleAddMapFrame}
+                            title={l(
+                              "Ajoute une deuxième vue de carte indépendante — utile quand des zones sont éloignées les unes des autres.",
+                              "Adds a second, independent map view — useful when zones are far apart.",
+                            )}
+                          >
+                            <Plus className="h-4 w-4 mr-1.5" />
+                            {l("Ajouter un cadre de carte", "Add map frame")}
+                          </Button>
                         </TabsContent>
                         <TabsContent value="pdf">
                           <PdfZoneEditor
@@ -889,6 +949,19 @@ const SoluxIntake = () => {
                           />
                         </TabsContent>
                       </Tabs>
+                      {/* Feedback #3 — comments tied to the map/plan itself. */}
+                      <div className="mt-4 space-y-2">
+                        <Label>{l("Commentaires sur le plan (pour le Study Lab)", "Plan comments (for the Study Lab)")}</Label>
+                        <Textarea
+                          value={form.planNotes}
+                          onChange={(e) => onChange("planNotes", e.target.value)}
+                          rows={3}
+                          placeholder={l(
+                            "Ex. : ne pas installer sur cette partie · privilégier cette route · conserver les mâts existants…",
+                            "E.g.: do not install on this part · prefer this road · keep the existing poles…",
+                          )}
+                        />
+                      </div>
                     </section>
 
                     <section>
@@ -965,7 +1038,7 @@ const SoluxIntake = () => {
                         </div>
                         <div className="space-y-2" id="field-cct">
                           <Label>{l("CCT en Kelvin *", "Color Temperature (CCT in Kelvin) *")}</Label>
-                          <CctSelect value={form.cct} onChange={(v) => syncAssignedZoneData({ cct: v })} />
+                          <CctSelect value={form.cct} onChange={(v) => syncAssignedZoneData({ cct: v })} lang={lang} />
                           <FieldMessage error={fieldErrors.cct} />
                         </div>
                       </div>
@@ -1375,13 +1448,16 @@ const SoluxIntake = () => {
             typing in the form doesn't re-render the whole submission document. */}
         {exportDocMounted && (
           <div style={{ position: "absolute", left: -9999 }}>
+            {/* apiKey passed so the direct export renders the SAME live map as
+                the PDF-preview export (feedback #10 — the two buttons used to
+                produce different documents, the direct one missing the plan). */}
             <PdfSubmissionDocument
               ref={directExportRef}
               form={form}
               salesName={form.preparedBy || salesName}
               nowStr={nowStr}
               lang={lang}
-              mapPreviewMode="placeholder"
+              apiKey={GOOGLE_MAPS_API_KEY}
               attachments={attachmentMeta}
             />
           </div>

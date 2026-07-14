@@ -14,7 +14,38 @@ export type MapLamppost = {
   lng: number;
   type: "single" | "double";
   rotation?: number;
+  // Identification (Study Lab feedback #4): every lamppost gets its own
+  // colour and a visible short label ("L1", "L2"…) so sales and the Study
+  // Lab can unambiguously refer to a specific pole.
+  color?: string;
+  label?: string;
 };
+
+// Indication line drawn on the map (Study Lab feedback #2) — e.g. red where
+// lampposts must NOT go, green where installation is fine. Open polyline.
+export type MapLine = {
+  id: string;
+  path: { lat: number; lng: number }[];
+  color: string;
+};
+
+// An extra, independent viewport onto the same study map (feedback #5) —
+// lets distant zones each get a readable frame in the app and the PDF.
+export type MapFrame = {
+  id: string;
+  center: { lat: number; lng: number } | null;
+  zoom: number | null;
+};
+
+// Distinct colours cycled over lampposts for easy identification.
+export const LAMPPOST_COLORS = ["#f59e0b", "#2563eb", "#dc2626", "#16a34a", "#9333ea", "#0891b2", "#ea580c", "#db2777"];
+
+// Colour + label for a lamppost, with stable fallbacks for poles created
+// before identification existed (colour cycles, label = index order).
+export const lamppostDisplay = (lp: { color?: string; label?: string }, index: number) => ({
+  color: lp.color || LAMPPOST_COLORS[index % LAMPPOST_COLORS.length],
+  label: lp.label || `L${index + 1}`,
+});
 
 export type MapValue = {
   address: string;
@@ -38,6 +69,18 @@ export type PdfLamppost = {
   page: number;
   type: "single" | "double";
   rotation?: number;
+  // Identification (Study Lab feedback #4) — same scheme as MapLamppost.
+  color?: string;
+  label?: string;
+};
+
+// Indication line drawn on an uploaded plan (feedback #2). Coordinates are
+// normalised (0–1) like zones/lampposts so they survive zoom and rotation.
+export type PdfLine = {
+  id: string;
+  points: { x: number; y: number }[];
+  color: string;
+  page: number;
 };
 
 export type PdfZoneValue = {
@@ -48,7 +91,12 @@ export type PdfZoneValue = {
   mediaType?: "pdf" | "image";
   zones: PdfZone[];
   lampposts?: PdfLamppost[];
+  lines?: PdfLine[];
   previewImage?: string;
+  // Extra saved views of the same plan (feedback #5): each is a snapshot of
+  // the user's framing at capture time, appended to the exported PDF so far
+  // apart areas each stay readable.
+  extraFrames?: { id: string; image: string }[];
   // Original upload metadata. CAD files (dwg/dxf) cannot be previewed in the
   // browser yet: pdfUrl stays empty, only these fields are set, and the UI
   // shows a stored-file placeholder instead of the annotation canvas.
@@ -556,6 +604,13 @@ export interface SoluxForm {
   location: null | { lat: number; lng: number };
   areas: MapArea[];
   lampposts: MapLamppost[];
+  // Indication lines drawn on the map (feedback #2).
+  mapLines: MapLine[];
+  // Free comment tied to the map/plan itself (feedback #3) — instructions the
+  // Study Lab reads next to the drawing ("keep existing poles on this side"…).
+  planNotes: string;
+  // Additional independent map viewports (feedback #5).
+  extraMapFrames: MapFrame[];
   mapZoom: number | undefined;
   mapCenter: { lat: number; lng: number } | undefined;
   assignedArea: string;
@@ -622,6 +677,9 @@ export const defaultForm: SoluxForm = {
   location: null,
   areas: [],
   lampposts: [],
+  mapLines: [],
+  planNotes: "",
+  extraMapFrames: [],
   mapZoom: undefined,
   mapCenter: undefined,
   assignedArea: "",

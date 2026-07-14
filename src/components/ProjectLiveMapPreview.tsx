@@ -1,6 +1,6 @@
-import { GoogleMap, useJsApiLoader, PolygonF, MarkerF } from "@react-google-maps/api";
-import { MapArea, MapLamppost } from "@/types/solux";
-import { getLamppostIconOptions } from "@/lib/lamppostIcon";
+import { GoogleMap, useJsApiLoader, PolygonF, PolylineF, MarkerF } from "@react-google-maps/api";
+import { MapArea, MapLamppost, MapLine, lamppostDisplay } from "@/types/solux";
+import { getLamppostIconOptions, getLamppostLabel } from "@/lib/lamppostIcon";
 import { MAP_SYMBOL_CIRCLE } from "@/lib/googleMapsSymbols";
 
 const LIBRARIES: ("places" | "drawing")[] = ["places", "drawing"];
@@ -10,12 +10,15 @@ interface Props {
   location: { lat: number; lng: number };
   areas: MapArea[];
   lampposts: MapLamppost[];
+  lines?: MapLine[];
   zoom?: number;
   center?: { lat: number; lng: number };
   lang?: "fr" | "en";
+  // Frame title shown in the overlay (e.g. "Additional view 2").
+  title?: string;
 }
 
-const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, center, lang = "en" }: Props) => {
+const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, lines = [], zoom, center, lang = "en", title }: Props) => {
   const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: apiKey, libraries: LIBRARIES });
 
   const l = (fr: string, en: string) => (lang === "fr" ? fr : en);
@@ -55,14 +58,27 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, cente
           />
         ))}
 
-        {/* Lampposts */}
-        {lampposts.map((lp) => (
-          <MarkerF
-            key={lp.id}
-            position={{ lat: lp.lat, lng: lp.lng }}
-              icon={getLamppostIconOptions({ type: lp.type, rotation: lp.rotation || 0 })}
+        {/* Indication lines (Study Lab feedback #2) */}
+        {lines.map((line) => (
+          <PolylineF
+            key={line.id}
+            path={line.path}
+            options={{ strokeColor: line.color, strokeWeight: 4, strokeOpacity: 0.9, clickable: false }}
           />
         ))}
+
+        {/* Lampposts — identification colour + label (feedback #4) */}
+        {lampposts.map((lp, i) => {
+          const identity = lamppostDisplay(lp, i);
+          return (
+            <MarkerF
+              key={lp.id}
+              position={{ lat: lp.lat, lng: lp.lng }}
+              icon={getLamppostIconOptions({ type: lp.type, rotation: lp.rotation || 0, color: identity.color })}
+              label={getLamppostLabel(identity.label, identity.color)}
+            />
+          );
+        })}
 
         {/* Reference location marker */}
         <MarkerF
@@ -80,7 +96,7 @@ const ProjectLiveMapPreview = ({ apiKey, location, areas, lampposts, zoom, cente
 
       {/* Label overlay */}
       <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-        {l("Aperçu du projet", "Project preview")}
+        {title || l("Aperçu du projet", "Project preview")}
       </div>
 
       {/* GPS footer */}

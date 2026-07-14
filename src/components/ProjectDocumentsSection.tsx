@@ -737,7 +737,7 @@ const ProjectDocumentsSection = memo(function ProjectDocumentsSection({ document
                     {/* Product-level CCT (deliberately not per road segment) */}
                     <div className="space-y-1">
                       <Label className="text-xs">{l("Température de couleur (CCT)", "Color Temperature (CCT)")}</Label>
-                      <CctSelect value={selected.config.cct} onChange={(v) => updateConfig(selected, { cct: v })} includeWarm />
+                      <CctSelect value={selected.config.cct} onChange={(v) => updateConfig(selected, { cct: v })} lang={lang} />
                     </div>
                     <div className="space-y-1">
                       <FieldHead label={l("Hauteur de feu (m)", "Mounting Height (m)")} k="height" />

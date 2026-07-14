@@ -44,6 +44,7 @@ export const getLamppostPath = (type: MapLamppost["type"], rotation = 0) => {
 };
 
 let lamppostIconAnchor: google.maps.Point | undefined;
+let lamppostLabelOrigin: google.maps.Point | undefined;
 
 const getLamppostIconAnchor = () => {
   if (!lamppostIconAnchor && typeof google !== "undefined") {
@@ -52,23 +53,46 @@ const getLamppostIconAnchor = () => {
   return lamppostIconAnchor;
 };
 
+// Where the marker label ("L1", "L2"…) sits relative to the icon: just above
+// the pole, so the number never covers the lamppost drawing itself.
+const getLamppostLabelOrigin = () => {
+  if (!lamppostLabelOrigin && typeof google !== "undefined") {
+    lamppostLabelOrigin = new google.maps.Point(0, -14);
+  }
+  return lamppostLabelOrigin;
+};
+
 export const getLamppostIconOptions = ({
   type,
   rotation = 0,
   selected = false,
+  color,
 }: {
   type: MapLamppost["type"];
   rotation?: number;
   selected?: boolean;
+  // Per-lamppost identification colour (feedback #4); defaults to the
+  // historical amber.
+  color?: string;
 }): google.maps.Symbol => {
   const anchor = getLamppostIconAnchor();
+  const labelOrigin = getLamppostLabelOrigin();
   return {
     path: getLamppostPath(type, rotation),
-    fillColor: LAMPPOST_FILL,
+    fillColor: color || LAMPPOST_FILL,
     fillOpacity: 1,
     strokeColor: selected ? LAMPPOST_SELECTION_STROKE : LAMPPOST_STROKE,
     strokeWeight: selected ? 3 : 2.25,
     scale: selected ? 1.45 : 1.2,
     ...(anchor ? { anchor } : {}),
+    ...(labelOrigin ? { labelOrigin } : {}),
   };
 };
+
+// Standard marker label config for a lamppost id label.
+export const getLamppostLabel = (text: string, color: string): google.maps.MarkerLabel => ({
+  text,
+  color,
+  fontSize: "12px",
+  fontWeight: "800",
+});
